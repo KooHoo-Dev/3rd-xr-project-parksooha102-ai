@@ -33,11 +33,13 @@ namespace Game
     // 반칙패 (기획서 4.5 : 신호 전에 총을 홀스터에서 빼면 즉시 '비겁자')
     //   대치 중(신호 전)에 CombatManager.PlayerDrew 가 오면 → Foul 로 판정하고 결투를 끝낸다.
     //   결과에는 "신호가 울릴 예정이던 시각 - 뽑은 시각" = 몇 초 먼저 뽑았는지를 담는다.
-    //   대치가 시작될 때 총이 손에 있으면 반칙 판정이 안 되므로, 대치 시작에 총을 홀스터에 꽂아 둔다.
-    //     (임시. "홀스터에 꽂아야 다음 라운드" 가 생기면 그쪽이 꽂게 된다)
+    //   대치가 시작될 때 총이 손에 있으면 반칙 판정이 안 되므로, 총이 꽂힌 뒤에만 다음 라운드로 간다. (아래)
     //
-    // 아직 없는 것 (4일차) : 텔레포트 전진, 홀스터에 꽂아야 다음 라운드, 결과판
-    //   지금은 무승부 뒤 nextRoundDelay 초가 지나면 저절로 다음 라운드가 시작된다.
+    // 홀스터에 꽂아야 다음 라운드 (기획서 4.4, 5장)
+    //   무승부가 나면 플레이어가 총을 홀스터에 꽂을 때까지 기다린다. 꽂히면 바로 다음 라운드 대치.
+    //   holsterTimeLimit(5초) 안에 안 꽂으면 자동으로 꽂고 넘어간다.
+    //
+    // 아직 없는 것 (4일차) : 텔레포트 전진 (꽂으면 표식이 켜지고, 이동하면 다음 라운드), 결과판
     //
     // 왜 [DefaultExecutionOrder(-50)] 인가?
     //   OnEnable 에서 CombatManager.Instance 를 쓰므로 CombatManager(-100) 보다 늦게,
@@ -65,7 +67,7 @@ namespace Game
         [SerializeField] private Vector2 firstSignalDelay = new Vector2(5f, 8f);   // 1라운드 대치 시간 (최소, 최대)
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
         [SerializeField] private float drawTimeLimit = 3f;                         // 신호 후 이 시간이 지나면 안 쏜 것으로 본다
-        [SerializeField] private float nextRoundDelay = 3f;                        // 무승부 뒤 다음 라운드까지 (임시. 나중엔 텔레포트가 정한다)
+        [SerializeField] private float holsterTimeLimit = 5f;                      // 무승부 뒤 이 시간 안에 안 꽂으면 자동으로 꽂는다
 
         // ---- 방송 ----
         public event Action<int> RoundStarted;         // 대치 시작. 라운드 번호 (1부터)
@@ -135,11 +137,9 @@ namespace Game
                 playerFired = false;
                 enemyFired = false;
                 CombatManager.Instance.LockPlayerGun();     // 신호 전에는 쏠 수 없다
-                // 총을 홀스터에서 시작해야 "신호 전에 뽑음" 을 알 수 있다
-                //   1라운드는 소켓의 Starting Selected Interactable 이 이미 꽂아 둔다.
-                //   (StageManager 의 Start 가 소켓의 Start 보다 먼저 돌아서, 여기서 꽂으면 소켓과 겹친다)
-                if (round > 1)
-                    CombatManager.Instance.HolsterPlayerGun();
+                // 총은 홀스터에 꽂힌 채로 대치를 시작한다 (그래야 "신호 전에 뽑음" 을 알 수 있다)
+                //   1라운드 : 소켓의 Starting Selected Interactable 이 꽂아 둔다
+                //   2라운드부터 : 앞 라운드 ⑤ WaitForHolster 가 꽂힌 것을 확인하고 넘어온다
                 Debug.Log($"[StageManager] {round}라운드 대치");
                 RoundStarted?.Invoke(round);
 
@@ -171,10 +171,33 @@ namespace Game
                 if (isDrawPhase)
                     EndRound(RoundOutcome.Draw, HitPart.Body);
 
-                // ④ 승부가 났으면 끝, 무승부면 잠시 뒤 다음 라운드
+                // ④ 승부가 났으면 끝
                 if (lastOutcome != RoundOutcome.Draw)
                     yield break;
-                yield return new WaitForSeconds(nextRoundDelay);
+
+                // ⑤ 무승부 → 총을 홀스터에 꽂아야 다음 라운드 (마지막 라운드였으면 기다릴 것 없음)
+                if (round < enemyDef.RoundCount)
+                    yield return WaitForHolster();
+            }
+        }
+
+        // 총이 홀스터에 꽂힐 때까지 기다린다. holsterTimeLimit 초가 지나면 대신 꽂아 준다
+        //   기다리는 동안 총을 뽑았다 꽂았다 해도 괜찮다 (isStandoff 가 false 라서 반칙이 아니다)
+        //   안 뽑고 버틴 라운드(시간 초과 무승부)는 이미 꽂혀 있으므로 바로 넘어간다
+        private IEnumerator WaitForHolster()
+        {
+            // ① 꽂히거나 시간이 다 될 때까지 한 프레임씩 기다린다
+            float waitStart = Time.time;
+            Debug.Log($"[StageManager] 무승부. 총을 홀스터에 꽂으면 다음 라운드 ({holsterTimeLimit}초 뒤 자동)");
+            while (CombatManager.Instance.IsPlayerGunHolstered() == false && Time.time - waitStart < holsterTimeLimit)
+                yield return null;
+
+            // ② 끝까지 안 꽂았으면 대신 꽂는다 (기획서 5장 : 무승부 뒤 총을 안 꽂음 → 5초 뒤 자동으로 꽂는다)
+            //    손에 들고 있어도, 바닥에 떨어져 있어도 PutBack 이 홀스터로 가져온다
+            if (CombatManager.Instance.IsPlayerGunHolstered() == false)
+            {
+                Debug.Log("[StageManager] 시간이 지나 총을 자동으로 꽂았습니다.");
+                CombatManager.Instance.HolsterPlayerGun();
             }
         }
 

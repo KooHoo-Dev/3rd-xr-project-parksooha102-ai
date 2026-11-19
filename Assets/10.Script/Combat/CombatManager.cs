@@ -84,6 +84,12 @@ namespace Game
             playerHolster.PutBack();
         }
 
+        // 플레이어 총이 지금 홀스터에 꽂혀 있나? (무승부 뒤 "꽂아야 다음 라운드" 에 쓴다)
+        public bool IsPlayerGunHolstered()
+        {
+            return playerHolster.IsHolstered();
+        }
+
         // 총이 한 발 쐈다 → 구독자 모두에게 다시 알린다
         private void HandleGunFired(ShotInfo shot)
         {
