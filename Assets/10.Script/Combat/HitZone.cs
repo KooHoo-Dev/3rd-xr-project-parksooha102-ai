@@ -10,15 +10,25 @@ namespace Game
         Body,   // 몸통
     }
 
-    // 맞는 자리 (교안 HurtBox 와 같은 역할)
-    // "총에 맞으면 여기가 어느 부위인지" 만 알려 준다. 맞았을 때 무엇을 할지는 모른다.
-    //   쓰러지기, 점수 계산은 CombatManager 의 PlayerFired 를 구독한 쪽이 한다.
-    //
-    // 사용법
-    //   콜라이더가 있는 오브젝트에 붙이고 Part 를 고른다. (콜라이더와 같은 오브젝트에 붙여야 총이 찾는다)
-    //     과녁 테스트 : 3D Object > Cube 를 만들고 붙인다 (Cube 에는 Box Collider 가 이미 있다)
-    //     적         : Head 뼈에 Sphere Collider + HitZone(Head), Spine 뼈에 Capsule Collider + HitZone(Body)
-    //   콜라이더의 Is Trigger 는 꺼 둔다. (총은 트리거를 무시하고 쏜다. 이유는 Gun.cs ②)
+    // 부위 이름 (HitPart.Head → "머리"). 결과판과 라운드 쪽지가 같이 쓴다
+    //   ScoreCalculator 처럼 기억할 것이 없어서 static 이다.
+    //     string name = HitPartNames.Get(HitPart.Head);   // → "머리"
+    public static class HitPartNames
+    {
+        public static string Get(HitPart part)
+        {
+            switch (part)
+            {
+                case HitPart.Head: return "머리";
+                case HitPart.Body: return "몸통";
+            }
+
+            // HitPart 에 부위를 새로 추가하고 여기를 안 고쳤다
+            throw new Exception($"[HitPartNames] 이름이 정해지지 않은 부위입니다 : {part}");
+        }
+    }
+
+    // 맞는 자리 (교안 HurtBox 와 같은 역할). "총에 맞으면 여기가 어느 부위인지" 만 알려 준다.
     [RequireComponent(typeof(Collider))]
     public class HitZone : MonoBehaviour
     {

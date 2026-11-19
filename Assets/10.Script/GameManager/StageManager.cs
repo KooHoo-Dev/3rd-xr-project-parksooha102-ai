@@ -2,66 +2,23 @@ using System;
 using System.Collections;
 using Game.Table;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Random = UnityEngine.Random;
 
 namespace Game
 {
+    // 한 라운드가 지금 어느 단계인가 (Ready → Standoff → Draw → Judged)
+    //   Ready 를 맨 앞에 둔다. enum 의 기본값은 맨 앞 이름이라, 결투 전에 총을 뽑아도 반칙이 아니게 된다
+    public enum DuelPhase
+    {
+        Ready,      // 결투 시작 전. 쏘거나 뽑아도 판정하지 않는다
+        Standoff,   // 대치 (신호 전). 이때 총을 뽑으면 반칙
+        Draw,       // 신호가 울렸고 아직 판정 전. 이때 쏜 총만 센다
+        Judged,     // 판정 끝. 무승부면 꽂기 · 전진을 기다리고, 승부가 났으면 결과판으로 간다
+    }
+
     // [스테이지 매니저] 결투 한 판의 라운드 흐름을 돌리고, 지금 무슨 일이 일어났는지 "방송" 한다.
-    //
-    // 매니저는 적이 누구인지 모른다. (카우보이인지, 몇 초에 쏘는지, 명중률이 얼마인지)
-    //   알리는 것은 세 가지뿐이다.
-    //     RoundStarted(라운드)   대치 시작      → 적 : 대기 자세로, 이번 라운드 표를 꺼내 둔다
-    //     DrawSignaled()         정오 신호(종)  → 적 : 드로우, 자기 격발 시각에 쏜다
-    //     RoundEnded(결과)       판정 끝        → 적 : 졌으면 맞은 부위를 잡고 쓰러진다
-    //   적이 이걸 듣고 "자기 표대로" 움직인다. 적을 바꿔도 이 파일은 고칠 것이 없다.
-    //
-    // 누가 누구를 아나? (화살표 = "안다")  — CombatManager 와 같은 방향이다
-    //   StageManager ──▶ CombatManager  : PlayerFired 를 구독 (플레이어가 쐈다)
-    //   StageManager ──▶ EnemyDuelist   : 직접 만든(Instantiate) 적의 Fired 를 구독 (적이 쐈다)
-    //                                     적의 "공통 부품" 만 알고, 어느 캐릭터인지는 모른다
-    //   EnemyDuelist ──▶ StageManager   : 세 방송을 구독
-    //
-    // 한 라운드의 흐름 (기획서 3장, 4.3)
-    //   대치 ─(2~5초 랜덤, 1라운드만 5~8초)─▶ 신호 ─▶ 드로우 (최대 3초) ─▶ 판정
-    //     먼저 "맞힌" 쪽이 이긴다. 먼저 쏜 쪽이 빗나가면 상대에게 기회가 남는다.
-    //     둘 다 빗나가거나 3초가 지나면 무승부 → 다음 라운드
-    //
-    // 총 잠그기 (기획서 4.2 : 라운드당 한 발, 쏜 뒤에는 다음 라운드까지 트리거가 잠긴다)
-    //   대치 시작 → 잠금   신호 → 풀림   한 발 쏨 → 잠금   판정 끝 → 잠금
-    //   총을 직접 모르므로 CombatManager 에게 시킨다 (StageManager ──▶ CombatManager ──▶ Gun)
-    //
-    // 반칙패 (기획서 4.5 : 신호 전에 총을 홀스터에서 빼면 즉시 '비겁자')
-    //   대치 중(신호 전)에 CombatManager.PlayerDrew 가 오면 → Foul 로 판정하고 결투를 끝낸다.
-    //   결과에는 "신호가 울릴 예정이던 시각 - 뽑은 시각" = 몇 초 먼저 뽑았는지를 담는다.
-    //   대치가 시작될 때 총이 손에 있으면 반칙 판정이 안 되므로, 총이 꽂힌 뒤에만 다음 라운드로 간다. (아래)
-    //
-    // 홀스터에 꽂아야 다음 라운드 (기획서 4.4, 5장)
-    //   무승부가 나면 플레이어가 총을 홀스터에 꽂을 때까지 기다린다.
-    //   holsterTimeLimit(5초) 안에 안 꽂으면 자동으로 꽂고 넘어간다.
-    //
-    // 텔레포트 전진 (기획서 4.4)
-    //   총이 꽂히면 다음 라운드 플레이어 자리에 전진 표식(AdvanceMarker)을 켠다.
-    //   플레이어가 표식으로 텔레포트하면 (XRI Teleportation Anchor) → 바로 다음 라운드 대치.
-    //   적은 다음 라운드가 시작될 때(PlaceEnemy) 같이 한 걸음 다가선다.
-    //   StageManager ──▶ AdvanceMarker : Show() 로 켜고, Advanced 를 구독한다
-    //
-    // 아직 없는 것 : 결과판
-    //
-    // 왜 [DefaultExecutionOrder(-50)] 인가?
-    //   OnEnable 에서 CombatManager.Instance 를 쓰므로 CombatManager(-100) 보다 늦게,
-    //   적(기본 0)이 StageManager.Instance 를 구독하기 전에 Instance 가 채워져야 하므로 그보다 먼저.
-    //
-    // 사용법
-    //   ① 빈 오브젝트 StageManager 를 만들고 붙인다. 씬에 하나만 둔다.
-    //   ② Player Spot : 플레이어가 1라운드에 서는 자리 (XR Origin 시작 위치). 파란 화살표(Z)가 적 쪽을 보게.
-    //      EnemyTester 와 같은 방식이다. 둘 다 적을 만들므로 EnemyTester 는 씬에서 꺼 둔다.
-    //   ③ Advance Marker : 씬의 전진 표식 오브젝트 (꼭 넣는다)
-    //   ④ Difficulty : 지금은 Inspector 에서 고른다 (나중에 타이틀 화면이 정한다)
-    //
-    // 구독하는 법
-    //   private void OnEnable()  { StageManager.Instance.RoundStarted += HandleRoundStarted; }
-    //   private void OnDisable() { StageManager.Instance.RoundStarted -= HandleRoundStarted; }
-    [DefaultExecutionOrder(-50)]
+    [DefaultExecutionOrder(-50)]   // CombatManager(-100) 다음, 적 · 결과판(기본 0) 보다 먼저 Instance 를 채운다
     public class StageManager : MonoBehaviour
     {
         public static StageManager Instance { get; private set; }
@@ -76,26 +33,33 @@ namespace Game
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
         [SerializeField] private float drawTimeLimit = 3f;                         // 신호 후 이 시간이 지나면 안 쏜 것으로 본다
         [SerializeField] private float holsterTimeLimit = 5f;                      // 무승부 뒤 이 시간 안에 안 꽂으면 자동으로 꽂는다
+        [SerializeField] private float resultDelay = 2f;                           // 승부가 나고 결과판이 뜨기까지 (쓰러지는 모습을 볼 시간)
 
         // ---- 방송 ----
         public event Action<int> RoundStarted;         // 대치 시작. 라운드 번호 (1부터)
         public event Action DrawSignaled;              // 정오 신호
         public event Action<RoundResult> RoundEnded;   // 판정 끝
+        public event Action<DuelResult> DuelEnded;     // 결투 끝. 점수 · 가장 빠른 반응 · 승부가 난 라운드
 
         public int CurrentRound { get; private set; }
+        public DuelPhase Phase { get; private set; }   // 지금 단계 (처음에는 Ready)
         public float SignalTime { get; private set; }  // 신호가 울린 시각 (Time.time). 반응속도 = 쏜 시각 - SignalTime
 
         private EnemyDef enemyDef;
         private EnemyDuelist enemy;
 
         // 지금 라운드의 상태
-        private bool isStandoff;      // 대치 중이다 (신호 전). 이때 총을 뽑으면 반칙
         private float signalAt;       // 이번 라운드 신호가 울릴 예정 시각 (Time.time)
-        private bool isDrawPhase;     // 신호가 울렸고, 아직 판정 전이다 (이때 쏜 총만 센다)
         private bool playerFired;
         private bool enemyFired;
-        private RoundOutcome lastOutcome;   // 방금 끝난 라운드의 결과 (무승부면 다음 라운드로)
+        private float playerReactionTime;   // 신호부터 플레이어가 쏠 때까지 (초). playerFired 일 때만 의미가 있다
+        private float enemyReactionTime;    // 신호부터 적이 쏠 때까지 (초). enemyFired 일 때만 의미가 있다
+        private RoundResult lastResult;     // 방금 끝난 라운드의 결과 (무승부면 다음 라운드로, 아니면 결과판으로)
         private bool isAdvanced;            // 전진 표식으로 이동했다
+
+        // 결투 전체의 기록 (라운드가 바뀌어도 지우지 않는다. 다시 결투는 씬을 다시 열므로 저절로 처음 값이 된다)
+        private bool hasFiredInDuel;          // 이번 결투에서 한 발이라도 쐈나
+        private float fastestReactionTime;    // 쏜 라운드 중 가장 빠른 반응속도 (초). hasFiredInDuel 일 때만 의미가 있다
 
         private void Awake()
         {
@@ -138,7 +102,7 @@ namespace Game
             enemy.Fired += HandleEnemyFired;
         }
 
-        // 결투 한 판. 라운드를 하나씩 돌고, 승부가 나면 끝낸다
+        // 결투 한 판. 라운드를 하나씩 돌고, 승부가 나면 for 를 빠져나가 결과판을 띄운다
         private IEnumerator DuelRoutine()
         {
             for (int round = 1; round <= enemyDef.RoundCount; round++)
@@ -148,6 +112,8 @@ namespace Game
                 PlaceEnemy(round);
                 playerFired = false;
                 enemyFired = false;
+                playerReactionTime = 0f;
+                enemyReactionTime = 0f;
                 CombatManager.Instance.LockPlayerGun();     // 신호 전에는 쏠 수 없다
                 // 총은 홀스터에 꽂힌 채로 대치를 시작한다 (그래야 "신호 전에 뽑음" 을 알 수 있다)
                 //   1라운드 : 소켓의 Starting Selected Interactable 이 꽂아 둔다
@@ -159,37 +125,38 @@ namespace Game
                 //   WaitForSeconds 대신 한 프레임씩 기다리는 이유 : 기다리는 도중 반칙이 나면 바로 멈춰야 해서
                 Vector2 delay = round == 1 ? firstSignalDelay : signalDelay;
                 signalAt = Time.time + Random.Range(delay.x, delay.y);
-                isStandoff = true;
-                while (isStandoff && Time.time < signalAt)
+                Phase = DuelPhase.Standoff;
+                while (Phase == DuelPhase.Standoff && Time.time < signalAt)
                     yield return null;
 
-                // 대치 중에 반칙으로 끝났다 → 결투 끝
-                if (isStandoff == false)
-                    yield break;
-                isStandoff = false;
+                // 대치 중에 반칙으로 끝났다 (HandlePlayerDrew → EndRound 가 Judged 로 바꿨다)
+                //   → 결투 끝 (for 를 빠져나가 ⑦ 결과판으로)
+                if (Phase == DuelPhase.Judged)
+                    break;
 
                 // ② 신호
                 SignalTime = Time.time;
-                isDrawPhase = true;
+                Phase = DuelPhase.Draw;
                 CombatManager.Instance.UnlockPlayerGun();   // 이 라운드의 한 발
                 Debug.Log($"[StageManager] {round}라운드 신호!");
                 DrawSignaled?.Invoke();
 
                 // ③ 판정이 날 때까지 기다린다. 총을 쏘면 HandlePlayerFired / HandleEnemyFired 가 판정한다
-                while (isDrawPhase && Time.time - SignalTime < drawTimeLimit)
+                while (Phase == DuelPhase.Draw && Time.time - SignalTime < drawTimeLimit)
                     yield return null;
 
                 // 3초 동안 승부가 안 났으면 무승부 (안 쏜 쪽은 쏘지 않은 것으로 본다)
-                if (isDrawPhase)
+                if (Phase == DuelPhase.Draw)
                     EndRound(RoundOutcome.Draw, HitPart.Body);
 
-                // ④ 승부가 났으면 끝
-                if (lastOutcome != RoundOutcome.Draw)
-                    yield break;
+                // ④ 승부가 났으면 결투 끝 (for 를 빠져나가 ⑦ 결과판으로)
+                if (lastResult.Outcome != RoundOutcome.Draw)
+                    break;
 
-                // 마지막 라운드였으면 다음이 없다
+                // 마지막 라운드는 적 명중률이 100% 라서 무승부가 날 수 없다 (기획서 3장)
+                //   여기 왔다면 표가 잘못된 것이다. 결과판도 안 뜨고 멈춰 있지 않게 바로 알린다
                 if (round == enemyDef.RoundCount)
-                    yield break;
+                    throw new Exception($"[StageManager] 마지막 {round}라운드가 무승부로 끝났습니다. enemies.json 의 {difficulty} 마지막 라운드가 HitRate 1, FireTime {drawTimeLimit}초 미만인지 확인해 주세요.");
 
                 // ⑤ 무승부 → 총을 홀스터에 꽂아야 다음으로
                 yield return WaitForHolster();
@@ -197,6 +164,15 @@ namespace Game
                 // ⑥ 전진 표식으로 이동해야 다음 라운드
                 yield return WaitForAdvance(round + 1);
             }
+
+            // ⑦ 결투 끝 → 쓰러지는 모습을 잠깐 보여 준 뒤 결과판
+            yield return new WaitForSeconds(resultDelay);
+
+            //    총을 홀스터에 돌려놓는다. 손이 비어야 레이로 버튼을 누르기 쉽다
+            //    드로우 중에 떨어뜨린 총도 이때 돌아온다 (기획서 9장)
+            CombatManager.Instance.HolsterPlayerGun();
+
+            EndDuel();
         }
 
         // 다음 라운드 자리에 전진 표식을 켜고, 플레이어가 그리로 이동할 때까지 기다린다
@@ -222,7 +198,7 @@ namespace Game
         }
 
         // 총이 홀스터에 꽂힐 때까지 기다린다. holsterTimeLimit 초가 지나면 대신 꽂아 준다
-        //   기다리는 동안 총을 뽑았다 꽂았다 해도 괜찮다 (isStandoff 가 false 라서 반칙이 아니다)
+        //   기다리는 동안 총을 뽑았다 꽂았다 해도 괜찮다 (Phase 가 Judged 라서 반칙이 아니다)
         //   안 뽑고 버틴 라운드(시간 초과 무승부)는 이미 꽂혀 있으므로 바로 넘어간다
         private IEnumerator WaitForHolster()
         {
@@ -268,9 +244,16 @@ namespace Game
         {
             // 신호 전, 판정 후에는 총이 잠겨 있어서 여기 오지 않는다.
             // 그래도 잠금 밖에서 Fire() 를 직접 부른 총알(테스터 등)은 판정에 넣지 않는다.
-            if (isDrawPhase == false) return;
+            if (Phase != DuelPhase.Draw) return;
 
             playerFired = true;
+            playerReactionTime = shot.FireTime - SignalTime;   // 반응속도 = 쏜 시각 - 신호 시각
+
+            // 결투 전체에서 가장 빠른 반응만 기억해 둔다 (첫 발이거나, 지금까지보다 빠르면 바꾼다)
+            if (hasFiredInDuel == false || playerReactionTime < fastestReactionTime)
+                fastestReactionTime = playerReactionTime;
+            hasFiredInDuel = true;
+
             CombatManager.Instance.LockPlayerGun();   // 한 발 쐈으니 다음 라운드까지 잠금
             if (shot.IsHit)
                 EndRound(RoundOutcome.PlayerWin, shot.Zone.Part);
@@ -282,18 +265,19 @@ namespace Game
         private void HandlePlayerDrew()
         {
             // 신호 뒤에 뽑는 것은 정상이다. 대치 중(신호 전)에 뽑았을 때만 반칙
-            if (isStandoff == false) return;
+            if (Phase != DuelPhase.Standoff) return;
 
-            isStandoff = false;   // DuelRoutine 의 기다림을 멈춘다
+            // EndRound 가 Phase 를 Judged 로 바꾼다 → DuelRoutine 의 대치 기다림이 멈춘다
             EndRound(RoundOutcome.Foul, HitPart.Body);
         }
 
         // 적이 쐈다 (적이 자기 격발 시각에 알려 줌)
         private void HandleEnemyFired(bool isHit)
         {
-            if (isDrawPhase == false) return;
+            if (Phase != DuelPhase.Draw) return;
 
             enemyFired = true;
+            enemyReactionTime = Time.time - SignalTime;   // 적은 쏘는 그 순간 알려 주므로 지금 시각이 쏜 시각이다
             if (isHit)
                 EndRound(RoundOutcome.EnemyWin, HitPart.Body);
             else if (playerFired)
@@ -304,8 +288,7 @@ namespace Game
         //   hitPart 는 PlayerWin 일 때만 쓰인다. 다른 결과에서는 아무 값이나 넣는다
         private void EndRound(RoundOutcome outcome, HitPart hitPart)
         {
-            isDrawPhase = false;
-            lastOutcome = outcome;
+            Phase = DuelPhase.Judged;   // 이제부터 쏘거나 뽑아도 판정하지 않는다
             CombatManager.Instance.LockPlayerGun();   // 안 쏘고 끝났어도 (적이 먼저 맞힘, 시간 초과) 잠근다
 
             RoundResult result = new RoundResult();
@@ -315,11 +298,48 @@ namespace Game
             if (outcome == RoundOutcome.Foul)
                 result.FoulEarly = signalAt - Time.time;   // 신호 예정 시각까지 남은 시간 = 몇 초 먼저 뽑았나
 
+            result.PlayerFired = playerFired;
+            result.PlayerReactionTime = playerReactionTime;
+            result.EnemyFired = enemyFired;
+            result.EnemyReactionTime = enemyReactionTime;
+
+            lastResult = result;   // DuelRoutine 이 보고 다음 라운드로 갈지, 결과판을 띄울지 정한다
+
             string detail = "";
-            if (outcome == RoundOutcome.PlayerWin) detail = $" ({hitPart})";
+            if (outcome == RoundOutcome.PlayerWin) detail = $" ({hitPart}, 반응속도 {playerReactionTime:0.00}초)";
             if (outcome == RoundOutcome.Foul) detail = $" (신호보다 {result.FoulEarly:0.00}초 먼저 뽑음)";
             Debug.Log($"[StageManager] {CurrentRound}라운드 판정 : {outcome}{detail}");
             RoundEnded?.Invoke(result);
+        }
+
+        // 결투 끝 → 방송 (EndRound 가 라운드 봉투를 만들듯, 여기서는 결투 봉투를 만든다)
+        private void EndDuel()
+        {
+            DuelResult result = new DuelResult();
+            result.LastRound = lastResult;
+            result.HasFired = hasFiredInDuel;
+            result.FastestReactionTime = fastestReactionTime;
+
+            // 점수는 이겼을 때만 계산한다. 지거나 반칙하면 0 (기획서 7장)
+            //   기본 점수는 난이도마다 달라서 표(enemyDef)에서 꺼내 넘긴다
+            //   결과판의 점수 내역에도 쓰이므로 봉투에 같이 담는다 (결과판은 난이도를 모른다)
+            result.BaseScore = enemyDef.BaseScore;
+            if (lastResult.Outcome == RoundOutcome.PlayerWin)
+                result.Score = ScoreCalculator.Calculate(enemyDef.BaseScore, lastResult.PlayerReactionTime, lastResult.HitPart, lastResult.Round);
+
+            Debug.Log($"[StageManager] 결투 끝 : {lastResult.Outcome}, {result.Score}점");
+            DuelEnded?.Invoke(result);
+        }
+
+        // ---------------------------------------------------------------- API
+
+        // 다시 결투 (결과판의 '다시 결투' 버튼이 부른다)
+        //   지금 씬을 처음부터 다시 연다. 씬의 모든 오브젝트가 처음 상태로 돌아가고 Start 가 1라운드부터 다시 돈다.
+        //   DataManager 는 씬 오브젝트가 아니라서 다시 읽지 않는다. (Play 를 누를 때 한 번만 읽는다)
+        public void RestartDuel()
+        {
+            Debug.Log("[StageManager] 다시 결투");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
     }
 }
