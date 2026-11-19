@@ -36,10 +36,16 @@ namespace Game
     //   대치가 시작될 때 총이 손에 있으면 반칙 판정이 안 되므로, 총이 꽂힌 뒤에만 다음 라운드로 간다. (아래)
     //
     // 홀스터에 꽂아야 다음 라운드 (기획서 4.4, 5장)
-    //   무승부가 나면 플레이어가 총을 홀스터에 꽂을 때까지 기다린다. 꽂히면 바로 다음 라운드 대치.
+    //   무승부가 나면 플레이어가 총을 홀스터에 꽂을 때까지 기다린다.
     //   holsterTimeLimit(5초) 안에 안 꽂으면 자동으로 꽂고 넘어간다.
     //
-    // 아직 없는 것 (4일차) : 텔레포트 전진 (꽂으면 표식이 켜지고, 이동하면 다음 라운드), 결과판
+    // 텔레포트 전진 (기획서 4.4)
+    //   총이 꽂히면 다음 라운드 플레이어 자리에 전진 표식(AdvanceMarker)을 켠다.
+    //   플레이어가 표식으로 텔레포트하면 (XRI Teleportation Anchor) → 바로 다음 라운드 대치.
+    //   적은 다음 라운드가 시작될 때(PlaceEnemy) 같이 한 걸음 다가선다.
+    //   StageManager ──▶ AdvanceMarker : Show() 로 켜고, Advanced 를 구독한다
+    //
+    // 아직 없는 것 : 결과판
     //
     // 왜 [DefaultExecutionOrder(-50)] 인가?
     //   OnEnable 에서 CombatManager.Instance 를 쓰므로 CombatManager(-100) 보다 늦게,
@@ -49,7 +55,8 @@ namespace Game
     //   ① 빈 오브젝트 StageManager 를 만들고 붙인다. 씬에 하나만 둔다.
     //   ② Player Spot : 플레이어가 1라운드에 서는 자리 (XR Origin 시작 위치). 파란 화살표(Z)가 적 쪽을 보게.
     //      EnemyTester 와 같은 방식이다. 둘 다 적을 만들므로 EnemyTester 는 씬에서 꺼 둔다.
-    //   ③ Difficulty : 지금은 Inspector 에서 고른다 (나중에 타이틀 화면이 정한다)
+    //   ③ Advance Marker : 씬의 전진 표식 오브젝트 (꼭 넣는다)
+    //   ④ Difficulty : 지금은 Inspector 에서 고른다 (나중에 타이틀 화면이 정한다)
     //
     // 구독하는 법
     //   private void OnEnable()  { StageManager.Instance.RoundStarted += HandleRoundStarted; }
@@ -61,6 +68,7 @@ namespace Game
 
         [Header("연결")]
         [SerializeField] private Transform playerSpot;
+        [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
         [SerializeField] private Difficulty difficulty = Difficulty.Normal;
@@ -87,6 +95,7 @@ namespace Game
         private bool playerFired;
         private bool enemyFired;
         private RoundOutcome lastOutcome;   // 방금 끝난 라운드의 결과 (무승부면 다음 라운드로)
+        private bool isAdvanced;            // 전진 표식으로 이동했다
 
         private void Awake()
         {
@@ -97,18 +106,21 @@ namespace Game
         {
             CombatManager.Instance.PlayerFired += HandlePlayerFired;
             CombatManager.Instance.PlayerDrew += HandlePlayerDrew;
+            advanceMarker.Advanced += HandleAdvanced;
         }
 
         private void OnDisable()
         {
             CombatManager.Instance.PlayerFired -= HandlePlayerFired;
             CombatManager.Instance.PlayerDrew -= HandlePlayerDrew;
+            advanceMarker.Advanced -= HandleAdvanced;
             if (enemy != null) enemy.Fired -= HandleEnemyFired;   // 적을 만들기 전에 꺼질 수도 있다
         }
 
         private void Start()
         {
             SpawnEnemy();
+            advanceMarker.Hide();   // 표식은 무승부 뒤에만 켠다
             StartCoroutine(DuelRoutine());
         }
 
@@ -175,10 +187,38 @@ namespace Game
                 if (lastOutcome != RoundOutcome.Draw)
                     yield break;
 
-                // ⑤ 무승부 → 총을 홀스터에 꽂아야 다음 라운드 (마지막 라운드였으면 기다릴 것 없음)
-                if (round < enemyDef.RoundCount)
-                    yield return WaitForHolster();
+                // 마지막 라운드였으면 다음이 없다
+                if (round == enemyDef.RoundCount)
+                    yield break;
+
+                // ⑤ 무승부 → 총을 홀스터에 꽂아야 다음으로
+                yield return WaitForHolster();
+
+                // ⑥ 전진 표식으로 이동해야 다음 라운드
+                yield return WaitForAdvance(round + 1);
             }
+        }
+
+        // 다음 라운드 자리에 전진 표식을 켜고, 플레이어가 그리로 이동할 때까지 기다린다
+        private IEnumerator WaitForAdvance(int nextRound)
+        {
+            // ① 표식을 다음 라운드 플레이어 자리에 켠다 (거리가 1m 씩 줄면 지금 자리에서 0.5m 앞)
+            isAdvanced = false;
+            advanceMarker.Show(GetPlayerPosition(nextRound));
+            Debug.Log("[StageManager] 전진 표식으로 텔레포트하면 다음 라운드");
+
+            // ② 이동할 때까지 기다린다 (HandleAdvanced 가 isAdvanced 를 켠다)
+            while (isAdvanced == false)
+                yield return null;
+
+            // ③ 표식을 기다리는 동안 총을 다시 뽑았을 수도 있다 → 꽂고 시작한다 (이미 꽂혀 있으면 아무 일 없음)
+            CombatManager.Instance.HolsterPlayerGun();
+        }
+
+        // 플레이어가 전진 표식으로 이동했다 (AdvanceMarker 가 알려 줌)
+        private void HandleAdvanced()
+        {
+            isAdvanced = true;
         }
 
         // 총이 홀스터에 꽂힐 때까지 기다린다. holsterTimeLimit 초가 지나면 대신 꽂아 준다
@@ -201,10 +241,19 @@ namespace Game
             }
         }
 
-        // 라운드마다 적 자리 : 플레이어와 적이 0.5m 씩 같이 다가서므로,
-        //   플레이어 = 출발점 + (1라운드 거리 - 이번 거리) / 2,  적 = 플레이어 + 이번 거리
+        // 라운드마다 플레이어 자리 : 플레이어와 적이 같이 다가서서 줄어든 거리를 반씩 나눠 걷는다
+        //   플레이어 = 출발점 + (1라운드 거리 - 이번 거리) / 2
+        //   예) 10m → 9m 면 플레이어가 0.5m, 적이 0.5m 앞으로
+        private Vector3 GetPlayerPosition(int round)
+        {
+            float firstDistance = enemyDef.GetRound(1).Distance;
+            float distance = enemyDef.GetRound(round).Distance;
+            return playerSpot.position + playerSpot.forward * ((firstDistance - distance) / 2f);
+        }
+
+        // 라운드마다 적 자리 : 적 = 플레이어 + 이번 거리
         //   → 적 = 출발점 + (1라운드 거리 + 이번 거리) / 2
-        //   (텔레포트가 생기기 전에는 플레이어가 출발점에 있으므로, 실제 거리는 이것보다 조금 멀다)
+        //   (플레이어가 방 안에서 걸어 다닐 수 있으므로, 실제 거리는 이것과 조금 다를 수 있다)
         private void PlaceEnemy(int round)
         {
             float firstDistance = enemyDef.GetRound(1).Distance;
