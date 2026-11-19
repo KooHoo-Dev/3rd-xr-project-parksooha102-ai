@@ -42,12 +42,13 @@ namespace Game.Table
             List<EnemyDTO> rows = new List<EnemyDTO>();
             foreach (JObject enemyRow in array)   // 바깥 [ ] 안의 { } 하나 = 적 한 명
             {
-                // enemyRow : { "Difficulty": "Easy", "PrefabKey": "Enemies/SM_Chr_Cowboy_01", "Rounds": [ ... ] }
+                // enemyRow : { "Difficulty": "Easy", "PrefabKey": "Enemies/SM_Chr_Cowboy_01", "BaseScore": 700, "Rounds": [ ... ] }
                 EnemyDTO enemyDto = new EnemyDTO();
 
                 // 글자 "Easy" → Difficulty.Easy  (int.Parse 가 글자를 숫자로 바꾸듯, Enum.Parse 는 글자를 enum 으로 바꾼다)
                 enemyDto.Difficulty = Enum.Parse<Difficulty>((string)enemyRow["Difficulty"]);
                 enemyDto.PrefabKey = (string)enemyRow["PrefabKey"];
+                enemyDto.BaseScore = (int)enemyRow["BaseScore"];
 
                 // "Rounds": [ {...}, {...} ]  ← 적 한 명 안에 라운드 목록이 또 있다. 한 번 더 foreach
                 JArray roundArray = (JArray)enemyRow["Rounds"];
@@ -83,6 +84,7 @@ namespace Game.Table
                 {
                     Difficulty = enemyDto.Difficulty,
                     Prefab = prefab,
+                    BaseScore = enemyDto.BaseScore,   // 숫자라서 해석할 것이 없다. 그대로 넘긴다
                     Rounds = enemyDto.Rounds,   // 라운드는 해석할 것이 없어서 그대로 넘긴다
                 };
             }

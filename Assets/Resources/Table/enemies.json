@@ -2,6 +2,7 @@
   {
     "Difficulty": "Easy",
     "PrefabKey": "Enemies/SM_Chr_Cowboy_01",
+    "BaseScore": 700,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.30, "HitRate": 0.20 },
       { "Round": 2, "Distance": 9,  "FireTime": 1.20, "HitRate": 0.35 },
@@ -13,6 +14,7 @@
   {
     "Difficulty": "Normal",
     "PrefabKey": "Enemies/SM_Chr_Gunman_01",
+    "BaseScore": 1000,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.10, "HitRate": 0.35 },
       { "Round": 2, "Distance": 9,  "FireTime": 1.00, "HitRate": 0.50 },
@@ -24,6 +26,7 @@
   {
     "Difficulty": "Hard",
     "PrefabKey": "Enemies/SM_Chr_Badguy_01",
+    "BaseScore": 1500,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.00, "HitRate": 0.45 },
       { "Round": 2, "Distance": 9,  "FireTime": 0.90, "HitRate": 0.60 },

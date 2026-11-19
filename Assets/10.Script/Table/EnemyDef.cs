@@ -18,6 +18,7 @@ namespace Game.Table
     //     {                                ← 적 한 명 (= 난이도 하나)   → EnemyDTO
     //       "Difficulty": "Easy",
     //       "PrefabKey": "...",
+    //       "BaseScore": 700,              ← 이 적을 이기면 받는 기본 점수 (라운드마다 같아서 적 줄에 둔다)
     //       "Rounds": [                    ← 그 적의 라운드 목록
     //         { "Round": 1, ... },         ← 라운드 한 줄                → RoundDef
     //         ...
@@ -31,6 +32,7 @@ namespace Game.Table
     {
         public Difficulty Difficulty;
         public string PrefabKey;   // "Enemies/SM_Chr_Cowboy_01" ← 아직은 글자(주소)일 뿐
+        public int BaseScore;
         public List<RoundDef> Rounds = new List<RoundDef>();
     }
 
@@ -40,6 +42,7 @@ namespace Game.Table
     {
         public Difficulty Difficulty;
         public GameObject Prefab;        // 실제 프리팹 참조!
+        public int BaseScore;            // 이기면 받는 기본 점수 (기획서 7장 공식의 1000 자리. 난이도마다 다르다)
         public List<RoundDef> Rounds;    // [0] = 1라운드, [1] = 2라운드 ...
 
         public int RoundCount => Rounds.Count;   // 마지막 라운드인지 확인할 때 쓴다
