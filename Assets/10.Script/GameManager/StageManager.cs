@@ -30,7 +30,13 @@ namespace Game
     //   대치 시작 → 잠금   신호 → 풀림   한 발 쏨 → 잠금   판정 끝 → 잠금
     //   총을 직접 모르므로 CombatManager 에게 시킨다 (StageManager ──▶ CombatManager ──▶ Gun)
     //
-    // 아직 없는 것 (4일차) : 반칙패(신호 전 드로우), 텔레포트 전진, 홀스터에 꽂아야 다음 라운드, 결과판
+    // 반칙패 (기획서 4.5 : 신호 전에 총을 홀스터에서 빼면 즉시 '비겁자')
+    //   대치 중(신호 전)에 CombatManager.PlayerDrew 가 오면 → Foul 로 판정하고 결투를 끝낸다.
+    //   결과에는 "신호가 울릴 예정이던 시각 - 뽑은 시각" = 몇 초 먼저 뽑았는지를 담는다.
+    //   대치가 시작될 때 총이 손에 있으면 반칙 판정이 안 되므로, 대치 시작에 총을 홀스터에 꽂아 둔다.
+    //     (임시. "홀스터에 꽂아야 다음 라운드" 가 생기면 그쪽이 꽂게 된다)
+    //
+    // 아직 없는 것 (4일차) : 텔레포트 전진, 홀스터에 꽂아야 다음 라운드, 결과판
     //   지금은 무승부 뒤 nextRoundDelay 초가 지나면 저절로 다음 라운드가 시작된다.
     //
     // 왜 [DefaultExecutionOrder(-50)] 인가?
@@ -73,6 +79,8 @@ namespace Game
         private EnemyDuelist enemy;
 
         // 지금 라운드의 상태
+        private bool isStandoff;      // 대치 중이다 (신호 전). 이때 총을 뽑으면 반칙
+        private float signalAt;       // 이번 라운드 신호가 울릴 예정 시각 (Time.time)
         private bool isDrawPhase;     // 신호가 울렸고, 아직 판정 전이다 (이때 쏜 총만 센다)
         private bool playerFired;
         private bool enemyFired;
@@ -86,11 +94,13 @@ namespace Game
         private void OnEnable()
         {
             CombatManager.Instance.PlayerFired += HandlePlayerFired;
+            CombatManager.Instance.PlayerDrew += HandlePlayerDrew;
         }
 
         private void OnDisable()
         {
             CombatManager.Instance.PlayerFired -= HandlePlayerFired;
+            CombatManager.Instance.PlayerDrew -= HandlePlayerDrew;
             if (enemy != null) enemy.Fired -= HandleEnemyFired;   // 적을 만들기 전에 꺼질 수도 있다
         }
 
@@ -125,11 +135,26 @@ namespace Game
                 playerFired = false;
                 enemyFired = false;
                 CombatManager.Instance.LockPlayerGun();     // 신호 전에는 쏠 수 없다
+                // 총을 홀스터에서 시작해야 "신호 전에 뽑음" 을 알 수 있다
+                //   1라운드는 소켓의 Starting Selected Interactable 이 이미 꽂아 둔다.
+                //   (StageManager 의 Start 가 소켓의 Start 보다 먼저 돌아서, 여기서 꽂으면 소켓과 겹친다)
+                if (round > 1)
+                    CombatManager.Instance.HolsterPlayerGun();
                 Debug.Log($"[StageManager] {round}라운드 대치");
                 RoundStarted?.Invoke(round);
 
+                // 신호 시각을 미리 정해 두고, 그때까지 기다린다
+                //   WaitForSeconds 대신 한 프레임씩 기다리는 이유 : 기다리는 도중 반칙이 나면 바로 멈춰야 해서
                 Vector2 delay = round == 1 ? firstSignalDelay : signalDelay;
-                yield return new WaitForSeconds(Random.Range(delay.x, delay.y));
+                signalAt = Time.time + Random.Range(delay.x, delay.y);
+                isStandoff = true;
+                while (isStandoff && Time.time < signalAt)
+                    yield return null;
+
+                // 대치 중에 반칙으로 끝났다 → 결투 끝
+                if (isStandoff == false)
+                    yield break;
+                isStandoff = false;
 
                 // ② 신호
                 SignalTime = Time.time;
@@ -181,6 +206,16 @@ namespace Game
                 EndRound(RoundOutcome.Draw, HitPart.Body);   // 적은 이미 빗나갔고 나도 빗나감
         }
 
+        // 플레이어가 홀스터에서 총을 뽑았다 (CombatManager 가 알려 줌)
+        private void HandlePlayerDrew()
+        {
+            // 신호 뒤에 뽑는 것은 정상이다. 대치 중(신호 전)에 뽑았을 때만 반칙
+            if (isStandoff == false) return;
+
+            isStandoff = false;   // DuelRoutine 의 기다림을 멈춘다
+            EndRound(RoundOutcome.Foul, HitPart.Body);
+        }
+
         // 적이 쐈다 (적이 자기 격발 시각에 알려 줌)
         private void HandleEnemyFired(bool isHit)
         {
@@ -205,8 +240,13 @@ namespace Game
             result.Round = CurrentRound;
             result.Outcome = outcome;
             result.HitPart = hitPart;
+            if (outcome == RoundOutcome.Foul)
+                result.FoulEarly = signalAt - Time.time;   // 신호 예정 시각까지 남은 시간 = 몇 초 먼저 뽑았나
 
-            Debug.Log($"[StageManager] {CurrentRound}라운드 판정 : {outcome}" + (outcome == RoundOutcome.PlayerWin ? $" ({hitPart})" : ""));
+            string detail = "";
+            if (outcome == RoundOutcome.PlayerWin) detail = $" ({hitPart})";
+            if (outcome == RoundOutcome.Foul) detail = $" (신호보다 {result.FoulEarly:0.00}초 먼저 뽑음)";
+            Debug.Log($"[StageManager] {CurrentRound}라운드 판정 : {outcome}{detail}");
             RoundEnded?.Invoke(result);
         }
     }

@@ -1,4 +1,6 @@
+using System;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
@@ -21,6 +23,9 @@ namespace Game
     //   그 뒤로는 누가 PutBack() 을 불러야만 꽂는다.
     //     손에서 놓친 총은 그대로 떨어진다. 스테이지가 넘어갈 때 PutBack() 을 불러서 돌려놓는다.
     //     홀스터 구 안에서 놓은 총은 소켓이 알아서 꽂는다. (이것도 XRI 기본 기능)
+    //   총이 홀스터에서 빠지면(손으로 뽑음) Drawn 을 내보낸다.
+    //     소켓의 "빠짐(Select Exited)" 이벤트를 그대로 옮겨 말해 주는 것이다. (기획서 4.5 반칙 판정에 쓴다)
+    //     홀스터는 누가 듣는지 모른다. CombatManager 가 홀스터를 알고 Drawn 을 구독한다. (총의 Fired 와 같은 방식)
     //
     // 사용법
     //   씬의 Holster 오브젝트(XR Socket Interactor 가 있는 곳)에 붙인다.
@@ -36,11 +41,30 @@ namespace Game
         [Header("연결")]
         [SerializeField] private XRGrabInteractable item;
 
+        // 총이 홀스터에서 빠졌다 (뽑았다)
+        public event Action Drawn;
+
         private XRSocketInteractor socket;
 
         private void Awake()
         {
             socket = GetComponent<XRSocketInteractor>();
+        }
+
+        private void OnEnable()
+        {
+            socket.selectExited.AddListener(OnSelectExited);
+        }
+
+        private void OnDisable()
+        {
+            socket.selectExited.RemoveListener(OnSelectExited);
+        }
+
+        // 소켓이 잡고 있던 것을 놓았다 = 총이 홀스터에서 빠졌다
+        private void OnSelectExited(SelectExitEventArgs args)
+        {
+            Drawn?.Invoke();
         }
 
         // ---------------------------------------------------------------- API

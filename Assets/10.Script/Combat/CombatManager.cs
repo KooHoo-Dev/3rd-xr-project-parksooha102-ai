@@ -12,7 +12,8 @@ namespace Game
     //
     // 누가 누구를 아나? (화살표 = "안다")
     //   CombatManager ──▶ Gun          : Inspector 로 받아서 gun.Fired 를 구독한다
-    //   구독자들      ──▶ CombatManager : CombatManager.Instance.PlayerFired 를 구독한다
+    //   CombatManager ──▶ HolsterSlot  : Inspector 로 받아서 holster.Drawn 을 구독한다 (같은 방식)
+    //   구독자들      ──▶ CombatManager : CombatManager.Instance.PlayerFired / PlayerDrew 를 구독한다
     //                                     ShotTester (지금), GameManager · 적 · 소리 (나중에)
     //   총은 아무도 모른다. 구독자들은 총을 모른다.
     //   → 구독자를 늘리거나 빼도 Gun.cs 는 한 줄도 고치지 않는다. 이게 "느슨한 결합" 이다.
@@ -31,6 +32,7 @@ namespace Game
     // 사용법
     //   ① 빈 오브젝트 CombatManager 를 만들고 이 스크립트를 붙인다. 씬에 하나만 둔다.
     //   ② Player Gun : 총 오브젝트(SM_Wep_Revolver_01)를 끌어다 넣는다 (꼭 넣는다)
+    //   ③ Player Holster : XR Origin > HolsterAnchor > Holster 오브젝트를 끌어다 넣는다 (꼭 넣는다)
     //
     // 구독하는 법 (교안 HUD 가 EconomyManager 를 구독하는 것과 같다)
     //   private void OnEnable()  { CombatManager.Instance.PlayerFired += HandlePlayerFired; }
@@ -43,10 +45,14 @@ namespace Game
 
         [Header("연결")]
         [SerializeField] private Gun playerGun;
+        [SerializeField] private HolsterSlot playerHolster;
 
         // 플레이어가 한 발 쐈다. 맞았든 빗나갔든 쏠 때마다 한 번 온다.
         // 맞았는지는 받는 쪽이 shot.IsHit 로 본다.
         public event Action<ShotInfo> PlayerFired;
+
+        // 플레이어가 홀스터에서 총을 뽑았다. 반칙인지는 받는 쪽(StageManager)이 정한다.
+        public event Action PlayerDrew;
 
         private void Awake()
         {
@@ -57,11 +63,25 @@ namespace Game
         {
             // 총의 Fired 를 구독한다. 총의 Awake 가 아직이어도 괜찮다 (이벤트는 Awake 전부터 있다)
             playerGun.Fired += HandleGunFired;
+            playerHolster.Drawn += HandleHolsterDrawn;
         }
 
         private void OnDisable()
         {
             playerGun.Fired -= HandleGunFired;
+            playerHolster.Drawn -= HandleHolsterDrawn;
+        }
+
+        // 홀스터에서 총이 빠졌다 → 구독자 모두에게 다시 알린다
+        private void HandleHolsterDrawn()
+        {
+            PlayerDrew?.Invoke();
+        }
+
+        // 플레이어 총을 홀스터에 꽂는다 (손에 들려 있으면 빼앗아서)
+        public void HolsterPlayerGun()
+        {
+            playerHolster.PutBack();
         }
 
         // 총이 한 발 쐈다 → 구독자 모두에게 다시 알린다
