@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR;
@@ -21,7 +22,7 @@ namespace Game
     //     Holster Rotation : (90, 0, 0)
     //
     // 언제 붙이나?
-    //   ① 게임이 시작될 때 (waitTime 초 뒤 한 번)
+    //   ① 게임이 시작될 때 (머리 추적이 잡힌 뒤 waitTime 초 뒤 한 번)
     //   ② 기기에서 위치 초기화를 했을 때 (Quest: 오른손 Meta 버튼 길게 누르기)
     //   ③ 다른 스크립트가 ResetPosition() 을 불렀을 때 (라운드 시작 등)
     //   ④ 에디터 Play 중 이 컴포넌트 오른쪽 위 ⋮ 메뉴 > "위치 초기화" (헤드셋 없이 시험할 때)
@@ -31,6 +32,12 @@ namespace Game
     //   (버튼 onClick 에 AddListener 하는 것과 같은 일이다. C# 이벤트라서 += 로 등록, -= 로 해제한다)
     //   한 번 초기화해도 이벤트가 여러 번 올 수 있고, 머리 위치도 몇 프레임 뒤에야 자리를 잡는다.
     //   그래서 이벤트가 오면 바로 옮기지 않고, waitTime 초 뒤에 한 번만 옮긴다. (Invoke)
+    //
+    // 머리 추적이 잡혔는지 아는 방법
+    //   Quest 에서 앱이 막 켜졌을 때는 헤드셋 추적이 몇 초 늦게 잡힌다. 그 전의 머리 위치는 바닥(높이 0)이다.
+    //   이때 붙이면 홀스터가 바닥에서 0.6m 아래 = 땅속에 붙어서 총이 안 보인다. (위치 초기화를 해야 보이던 버그)
+    //   그래서 머리 높이가 minHeadHeight 보다 높아질 때까지 기다린 뒤에 붙인다.
+    //   (Tracking Origin Mode 가 Floor 라서 머리의 localPosition.y = 바닥에서 머리까지 높이다)
     //
     // Allow Recentering
     //   XR Origin 의 Tracking Origin Mode 가 Floor 면, OpenXR 은 기본으로 "방(STAGE) 기준" 좌표를 쓴다.
@@ -55,6 +62,7 @@ namespace Game
 
         [Header("설정")]
         [SerializeField] private float waitTime = 0.5f;   // 위치 초기화 후 머리 위치가 자리 잡을 때까지 기다리는 시간(초)
+        [SerializeField] private float minHeadHeight = 0.5f;   // 머리가 이것보다 낮으면 아직 추적 전으로 본다 (m). 앉아서 해도 넘는 높이
 
         private HolsterSlot holsterSlot;   // 자식 Holster. 부모-자식 관계이므로 Awake 에서 자식에서 꺼낸다
 
@@ -94,10 +102,22 @@ namespace Game
             CancelInvoke(nameof(ResetPosition));
         }
 
-        private void Start()
+        // 시작할 때도 한 번 붙인다. 단 머리 추적이 잡힌 뒤에 (위 "머리 추적이 잡혔는지 아는 방법")
+        private IEnumerator Start()
         {
-            // 시작할 때도 한 번 붙인다. 헤드셋 추적이 자리 잡을 시간을 조금 준다
-            Invoke(nameof(ResetPosition), waitTime);
+            // ① 머리가 바닥 근처에 있는 동안은 기다린다
+            while (IsHeadTracked() == false)
+                yield return null;
+
+            // ② 잡힌 직후엔 위치가 조금 흔들리므로 waitTime 초 더 기다린 뒤 붙인다
+            yield return new WaitForSeconds(waitTime);
+            ResetPosition();
+        }
+
+        // 머리 추적이 잡혔나? (머리가 바닥에서 minHeadHeight 보다 높은가)
+        private bool IsHeadTracked()
+        {
+            return head.localPosition.y > minHeadHeight;
         }
 
         // 기기가 위치 초기화를 했다
@@ -114,6 +134,14 @@ namespace Game
         [ContextMenu("위치 초기화")]
         public void ResetPosition()
         {
+            // ⓪ 아직 머리 추적 전이면 땅속에 붙으므로 건너뛴다
+            //    (시작 직후 기기가 보내는 위치 초기화 이벤트가 추적보다 먼저 올 수 있다. 그때는 Start 가 나중에 붙인다)
+            if (IsHeadTracked() == false)
+            {
+                Debug.Log("[HolsterAnchor] 아직 머리 추적 전이라 홀스터를 옮기지 않았습니다.");
+                return;
+            }
+
             // ① 머리가 보는 방향을 바닥과 평행하게 만든다 (y 를 0 으로 → 위아래로 기울어진 만큼을 버린다)
             Vector3 forward = head.forward;
             forward.y = 0f;
