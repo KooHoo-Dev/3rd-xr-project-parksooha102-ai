@@ -18,7 +18,10 @@ namespace Game
     //
     // 지금 하는 일
     //   잡은 손으로 트리거를 당기면(activated) Fire() 가 불린다.
-    //   아직 "라운드당 한 발" 잠금은 없다. 당기는 만큼 쏜다. (잠금은 GameManager 가 생길 때)
+    //   잠겨 있으면(IsLocked) 트리거를 당겨도 나가지 않는다.
+    //   총은 "잠김 / 풀림" 스위치만 가진다. 언제 잠그고 풀지(라운드당 한 발)는 라운드를 아는 StageManager 가 정한다.
+    //     StageManager ──▶ CombatManager.LockPlayerGun / UnlockPlayerGun ──▶ Gun.Lock / Unlock
+    //   처음에는 풀려 있다. 그래서 StageManager 가 없는 테스트 씬(ShotTester)에서는 당기는 만큼 쏜다.
     //
     // 사용법
     //   총 오브젝트(SM_Wep_Revolver_01)에 XR Grab Interactable 과 같이 붙인다.
@@ -36,7 +39,20 @@ namespace Game
         // 한 발 쐈다. 맞았든 빗나갔든 쏠 때마다 한 번 내보낸다 (교안 Enemy 의 GoalReached 와 같은 방식)
         public event Action<ShotInfo> Fired;
 
+        // 잠겼나? true 면 트리거를 당겨도 나가지 않는다
+        public bool IsLocked { get; private set; }
+
         private XRGrabInteractable grab;
+
+        public void Lock()
+        {
+            IsLocked = true;
+        }
+
+        public void Unlock()
+        {
+            IsLocked = false;
+        }
 
         private void Awake()
         {
@@ -56,6 +72,13 @@ namespace Game
         // 잡은 상태에서 트리거를 당겼다
         private void OnActivated(ActivateEventArgs args)
         {
+            // 잠겨 있으면 헛방아쇠 (나중에 "딸깍" 소리를 여기에 붙인다)
+            if (IsLocked)
+            {
+                Debug.Log("[Gun] 잠겨 있어서 나가지 않았다");
+                return;
+            }
+
             Fire();
         }
 

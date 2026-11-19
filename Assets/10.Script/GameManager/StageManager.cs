@@ -26,6 +26,10 @@ namespace Game
     //     먼저 "맞힌" 쪽이 이긴다. 먼저 쏜 쪽이 빗나가면 상대에게 기회가 남는다.
     //     둘 다 빗나가거나 3초가 지나면 무승부 → 다음 라운드
     //
+    // 총 잠그기 (기획서 4.2 : 라운드당 한 발, 쏜 뒤에는 다음 라운드까지 트리거가 잠긴다)
+    //   대치 시작 → 잠금   신호 → 풀림   한 발 쏨 → 잠금   판정 끝 → 잠금
+    //   총을 직접 모르므로 CombatManager 에게 시킨다 (StageManager ──▶ CombatManager ──▶ Gun)
+    //
     // 아직 없는 것 (4일차) : 반칙패(신호 전 드로우), 텔레포트 전진, 홀스터에 꽂아야 다음 라운드, 결과판
     //   지금은 무승부 뒤 nextRoundDelay 초가 지나면 저절로 다음 라운드가 시작된다.
     //
@@ -120,6 +124,7 @@ namespace Game
                 PlaceEnemy(round);
                 playerFired = false;
                 enemyFired = false;
+                CombatManager.Instance.LockPlayerGun();     // 신호 전에는 쏠 수 없다
                 Debug.Log($"[StageManager] {round}라운드 대치");
                 RoundStarted?.Invoke(round);
 
@@ -129,6 +134,7 @@ namespace Game
                 // ② 신호
                 SignalTime = Time.time;
                 isDrawPhase = true;
+                CombatManager.Instance.UnlockPlayerGun();   // 이 라운드의 한 발
                 Debug.Log($"[StageManager] {round}라운드 신호!");
                 DrawSignaled?.Invoke();
 
@@ -163,10 +169,12 @@ namespace Game
         // 플레이어가 쐈다 (CombatManager 가 알려 줌)
         private void HandlePlayerFired(ShotInfo shot)
         {
-            // 신호 전, 판정 후에 쏜 총은 세지 않는다 (신호 전 드로우 = 반칙은 4일차에 홀스터로 판정한다)
+            // 신호 전, 판정 후에는 총이 잠겨 있어서 여기 오지 않는다.
+            // 그래도 잠금 밖에서 Fire() 를 직접 부른 총알(테스터 등)은 판정에 넣지 않는다.
             if (isDrawPhase == false) return;
 
             playerFired = true;
+            CombatManager.Instance.LockPlayerGun();   // 한 발 쐈으니 다음 라운드까지 잠금
             if (shot.IsHit)
                 EndRound(RoundOutcome.PlayerWin, shot.Zone.Part);
             else if (enemyFired)
@@ -191,6 +199,7 @@ namespace Game
         {
             isDrawPhase = false;
             lastOutcome = outcome;
+            CombatManager.Instance.LockPlayerGun();   // 안 쏘고 끝났어도 (적이 먼저 맞힘, 시간 초과) 잠근다
 
             RoundResult result = new RoundResult();
             result.Round = CurrentRound;

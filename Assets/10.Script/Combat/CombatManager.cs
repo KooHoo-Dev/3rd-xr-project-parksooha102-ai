@@ -70,5 +70,17 @@ namespace Game
             // 구독자가 하나도 없으면 PlayerFired 가 null 이라 ?. 로 건너뛴다. (구독자가 없는 것도 정상이다)
             PlayerFired?.Invoke(shot);
         }
+
+        // 플레이어 총 잠그기 / 풀기 (StageManager 가 라운드에 맞춰 부른다)
+        // 다른 스크립트는 총을 모른다. 총을 아는 이 매니저를 통해서만 잠근다.
+        public void LockPlayerGun()
+        {
+            playerGun.Lock();
+        }
+
+        public void UnlockPlayerGun()
+        {
+            playerGun.Unlock();
+        }
     }
 }
