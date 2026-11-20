@@ -3,7 +3,6 @@ using System.Collections;
 using Game.Table;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 using Random = UnityEngine.Random;
 
 namespace Game
@@ -37,12 +36,11 @@ namespace Game
         private const float GroundRayLength = 20f;
 
         [Header("연결")]
-        [SerializeField] private TeleportationProvider teleportationProvider;   // XR Origin → Locomotion → Teleportation. 시작할 때 플레이어를 출발점으로 옮긴다
+        [SerializeField] private PlayerPlacer playerPlacer;   // 플레이어를 결투 자리에 세운다 (어디에 세울지는 내가 알려 준다)
         [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
-        [SerializeField] private LayerMask groundLayer;                            // 바닥 레이어 (Ground). 적 · 전진 표식을 이 바닥 높이에 세운다
-        [SerializeField] private float startTeleportDelay = 0.5f;                  // 켜고 이만큼 뒤에 플레이어를 출발점으로 옮긴다 (헤드셋 위치가 들어올 때까지)
+        [SerializeField] private LayerMask groundLayer;                            // 바닥 레이어 (Ground). 플레이어 · 적 · 전진 표식을 이 바닥 높이에 세운다
         [SerializeField] private Difficulty difficulty = Difficulty.Normal;
         [SerializeField] private Vector2 firstSignalDelay = new Vector2(5f, 8f);   // 1라운드 대치 시간 (최소, 최대)
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
@@ -120,9 +118,9 @@ namespace Game
         private IEnumerator DuelRoutine()
         {
             // ⓪ 플레이어를 결투 출발점에 세우고 적 쪽을 보게 한다
-            //    켜자마자는 헤드셋 위치가 아직 안 들어왔을 수 있어서 (그러면 엉뚱한 자리를 기준으로 옮긴다), 잠깐 기다렸다가 옮긴다
-            yield return new WaitForSeconds(startTeleportDelay);
-            TeleportPlayerToStart();
+            //    켜자마자는 헤드셋 추적이 아직 안 잡혔을 수 있어서 (그러면 엉뚱한 자리를 기준으로 옮긴다),
+            //    PlayerPlacer 가 추적이 잡힐 때까지 기다렸다가 세운다. 그동안 1라운드는 시작하지 않는다
+            yield return playerPlacer.PlaceFirst(GetGroundPosition(DuelStartPosition), Quaternion.LookRotation(DuelForward));
 
             for (int round = 1; round <= enemyDef.RoundCount; round++)
             {
@@ -220,6 +218,9 @@ namespace Game
         private void HandleAdvanced()
         {
             isAdvanced = true;
+
+            // 이제부터 설 자리는 이 표식 자리 (꺼졌어도 자리는 그대로 남아 있다). 위치 초기화하면 PlayerPlacer 가 여기에 다시 세운다
+            playerPlacer.SetStandPose(advanceMarker.transform.position, advanceMarker.transform.rotation);
         }
 
         // 총이 홀스터에 꽂힐 때까지 기다린다. holsterTimeLimit 초가 지나면 대신 꽂아 준다
@@ -264,20 +265,6 @@ namespace Game
             position = GetGroundPosition(position);   // 바닥이 울퉁불퉁하니 그 자리 땅 높이에 맞춘다 (안 그러면 뜨거나 묻힌다)
             Quaternion rotation = Quaternion.LookRotation(-DuelForward);   // 플레이어를 바라보게
             enemy.transform.SetPositionAndRotation(position, rotation);
-        }
-
-        // 플레이어를 결투 출발점에 세우고 적 쪽(DuelForward)을 보게 한다 (텔레포트 앵커가 하는 일을 코드로 한 번)
-        //   XR Origin 뿌리가 아니라 플레이어 몸(머리 바로 아래 바닥)이 출발점에 오고, 머리 방향이 적 쪽으로 돌아간다
-        //   → 방 안 어디에 서서 어느 쪽을 보고 시작했든 출발점에서 적을 보게 된다
-        //   요청만 넣어 두면 TeleportationProvider 가 다음 Update 에서 옮긴다
-        private void TeleportPlayerToStart()
-        {
-            TeleportRequest request = new TeleportRequest();
-            request.destinationPosition = GetGroundPosition(DuelStartPosition);
-            request.destinationRotation = Quaternion.LookRotation(DuelForward);
-            request.matchOrientation = MatchOrientation.TargetUpAndForward;   // 위 방향 + 앞 방향까지 맞춘다
-            request.requestTime = Time.time;
-            teleportationProvider.QueueTeleportRequest(request);
         }
 
         // position 바로 위에서 아래로 레이를 쏴서, 땅에 닿은 자리를 돌려준다 (x, z 는 그대로, y 만 땅 높이로)

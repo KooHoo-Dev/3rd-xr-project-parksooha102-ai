@@ -39305,6 +39305,28 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4274554277770894, guid: 6ced95f04487bec4e81f51a934884b80, type: 3}
   m_PrefabInstance: {fileID: 1066319694}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1068494752 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+  m_PrefabInstance: {fileID: 1776702529}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1068494758
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1068494752}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69fb7874b944eb64f8588e5480dd00e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.PlayerPlacer
+  head: {fileID: 299642475}
+  teleportationProvider: {fileID: 2116676456}
+  holsterAnchor: {fileID: 1269849638}
+  waitTime: 0.5
+  minHeadHeight: 0.5
 --- !u!1001 &1068721812
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -46269,8 +46291,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.HolsterAnchor
   head: {fileID: 299642475}
-  waitTime: 0.5
-  minHeadHeight: 0.5
 --- !u!1001 &1270252317
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -62171,12 +62191,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 699759666f6175d429f3ca016a5c0371, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.StageManager
-  teleportationProvider: {fileID: 2116676456}
+  playerPlacer: {fileID: 1068494758}
   advanceMarker: {fileID: 357717348}
   groundLayer:
     serializedVersion: 2
     m_Bits: 128
-  startTeleportDelay: 0.5
   difficulty: 1
   firstSignalDelay: {x: 5, y: 8}
   signalDelay: {x: 2, y: 5}
@@ -68803,7 +68822,10 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1269849637}
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1068494758}
   m_SourcePrefab: {fileID: 100100000, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
 --- !u!1001 &1779931252
 PrefabInstance:
