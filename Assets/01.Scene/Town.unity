@@ -61972,7 +61972,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 699759666f6175d429f3ca016a5c0371, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.StageManager
-  playerSpot: {fileID: 158590562}
   advanceMarker: {fileID: 357717348}
   difficulty: 1
   firstSignalDelay: {x: 5, y: 8}

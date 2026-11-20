@@ -23,8 +23,13 @@ namespace Game
     {
         public static StageManager Instance { get; private set; }
 
+        // 결투 출발점 : 월드 원점(0, 0, 0)에 서서 +Z 쪽(적 쪽)을 본다. Town 맵이 이 줄에 맞춰 지어져 있다
+        //   플레이어(XR Origin)를 기준으로 삼지 않는다. 플레이어가 어디로 움직였든 적 · 표식은 맵의 같은 자리에 선다
+        //   (Vector3 는 const 로 못 써서 static readonly 로 둔다. EnemyDuelist 의 IsAiming 과 같은 모양)
+        private static readonly Vector3 DuelStartPosition = Vector3.zero;
+        private static readonly Vector3 DuelForward = Vector3.forward;
+
         [Header("연결")]
-        [SerializeField] private Transform playerSpot;
         [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
@@ -227,7 +232,7 @@ namespace Game
         {
             float firstDistance = enemyDef.GetRound(1).Distance;
             float distance = enemyDef.GetRound(round).Distance;
-            return playerSpot.position + playerSpot.forward * ((firstDistance - distance) / 2f);
+            return DuelStartPosition + DuelForward * ((firstDistance - distance) / 2f);
         }
 
         // 라운드마다 적 자리 : 적 = 플레이어 + 이번 거리
@@ -237,8 +242,8 @@ namespace Game
         {
             float firstDistance = enemyDef.GetRound(1).Distance;
             float distance = enemyDef.GetRound(round).Distance;
-            Vector3 position = playerSpot.position + playerSpot.forward * ((firstDistance + distance) / 2f);
-            Quaternion rotation = Quaternion.LookRotation(-playerSpot.forward);   // 플레이어를 바라보게
+            Vector3 position = DuelStartPosition + DuelForward * ((firstDistance + distance) / 2f);
+            Quaternion rotation = Quaternion.LookRotation(-DuelForward);   // 플레이어를 바라보게
             enemy.transform.SetPositionAndRotation(position, rotation);
         }
 
