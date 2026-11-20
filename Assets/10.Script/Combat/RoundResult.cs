@@ -37,8 +37,9 @@ namespace Game
         public bool HasFired;                // 이번 결투에서 한 발이라도 쐈나
         public float FastestReactionTime;    // HasFired 일 때만 의미가 있다
 
-        public int Score;                    // 점수. LastRound 가 PlayerWin 일 때만 채운다. 지거나 반칙하면 0 (기획서 7장)
-        public int BaseScore;                // 이 적(난이도)의 기본 점수. 결과판의 점수 내역 "기본" 줄에 쓴다
-                                             //   결과판은 난이도를 모르므로, 표를 아는 StageManager 가 봉투에 넣어 준다
+        // 점수 (조각별로 담긴 봉투. 합계는 Score.Total)
+        //   LastRound 가 PlayerWin 일 때만 채운다. 지거나 반칙하면 비어 있어서 Total 이 0 (기획서 7장)
+        //   StageManager 가 한 번 계산해서 담는다. 결과판은 다시 계산하지 않고 읽기만 한다
+        public ScoreBreakdown Score;
     }
 }

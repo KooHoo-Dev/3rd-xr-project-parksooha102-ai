@@ -63,11 +63,11 @@ namespace Game
                     throw new Exception($"[ResultBoard] 결과판에 띄울 수 없는 결과입니다 : {result.LastRound.Outcome}");
             }
 
-            //    맨 아래 보상은 모든 결과가 같은 모양이다. 지거나 반칙하면 Score 가 0 이라 REWARD $ 0
-            //    $"REWARD $ {result.Score:N0}" 읽는 법
+            //    맨 아래 보상은 모든 결과가 같은 모양이다. 지거나 반칙하면 점수 봉투가 비어 있어서 REWARD $ 0
+            //    $"REWARD $ {result.Score.Total:N0}" 읽는 법
             //      맨 앞 $" 는 "{ } 안에 값을 넣는 글자" 라는 표시, REWARD 뒤의 $ 는 그냥 달러 글자다.
             //      { } 안이 값 자리이고, :N0 은 소수점 없이 세 자리마다 쉼표 (2580 → 2,580)
-            rewardText.SetText($"REWARD $ {result.Score:N0}");
+            rewardText.SetText($"REWARD $ {result.Score.Total:N0}");
 
             // ② 머리 앞 distance(m) 로 옮긴다. 방향은 Inspector 에서 돌려 둔 그대로 (적 쪽)
             transform.position = head.position + transform.forward * distance;
@@ -81,22 +81,20 @@ namespace Game
         {
             resultText.SetText($"{Dots}   WIN   {Dots}");
 
-            // 이긴 라운드의 봉투 (반응속도 · 맞힌 부위 · 라운드 번호가 여기 있다)
+            // 이긴 라운드의 봉투 (반응속도 · 맞힌 부위 · 라운드 번호가 여기 있다) → 줄 이름에 쓴다
             RoundResult winRound = result.LastRound;
 
-            // 점수 조각 (ScoreCalculator.Calculate 와 같은 함수)
-            int speedScore = ScoreCalculator.GetSpeedScore(winRound.PlayerReactionTime);
-            int bonus = ScoreCalculator.GetBonus(winRound.HitPart);
-            int roundBonus = ScoreCalculator.GetRoundBonus(winRound.Round);
+            // 점수 봉투 (StageManager 가 계산해서 담아 준 조각들) → 줄 끝 숫자에 쓴다. 여기서 다시 계산하지 않는다
+            ScoreBreakdown score = result.Score;
 
             // <align=left>  : 이 글자만 왼쪽 정렬 (나머지 결과는 가운데 정렬 그대로)
             // <indent=6%>   : 줄마다 왼쪽을 조금 띄운다 (종이의 그을린 가장자리에서 떨어지게)
             detailText.SetText(
                 "<align=left><indent=6%>" +
-                $"기본{NumberColumn}+{result.BaseScore:N0}\n" +
-                $"반응속도 {winRound.PlayerReactionTime:0.00}초{NumberColumn}+{speedScore}\n" +
-                $"{HitPartNames.Get(winRound.HitPart)} 명중{NumberColumn}+{bonus}\n" +
-                $"{winRound.Round}라운드{NumberColumn}+{roundBonus}");
+                $"기본{NumberColumn}+{score.BaseScore:N0}\n" +
+                $"반응속도 {winRound.PlayerReactionTime:0.00}초{NumberColumn}+{score.SpeedScore}\n" +
+                $"{HitPartNames.Get(winRound.HitPart)} 명중{NumberColumn}+{score.PartBonus}\n" +
+                $"{winRound.Round}라운드{NumberColumn}+{score.RoundBonus}");
         }
 
         // 패배 : LOSE + 진 라운드, 가장 빠른 반응

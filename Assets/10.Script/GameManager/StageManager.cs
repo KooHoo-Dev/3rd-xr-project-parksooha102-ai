@@ -373,14 +373,13 @@ namespace Game
             result.HasFired = hasFiredInDuel;
             result.FastestReactionTime = fastestReactionTime;
 
-            // 점수는 이겼을 때만 계산한다. 지거나 반칙하면 0 (기획서 7장)
+            // 점수는 이겼을 때만 계산한다. 지거나 반칙하면 봉투가 비어 있어서 0점 (기획서 7장)
             //   기본 점수는 난이도마다 달라서 표(enemyDef)에서 꺼내 넘긴다
-            //   결과판의 점수 내역에도 쓰이므로 봉투에 같이 담는다 (결과판은 난이도를 모른다)
-            result.BaseScore = enemyDef.BaseScore;
+            //   조각별로 담겨 오므로 결과판은 점수 내역을 다시 계산하지 않는다
             if (lastResult.Outcome == RoundOutcome.PlayerWin)
                 result.Score = ScoreCalculator.Calculate(enemyDef.BaseScore, lastResult.PlayerReactionTime, lastResult.HitPart, lastResult.Round);
 
-            Debug.Log($"[StageManager] 결투 끝 : {lastResult.Outcome}, {result.Score}점");
+            Debug.Log($"[StageManager] 결투 끝 : {lastResult.Outcome}, {result.Score.Total}점");
             DuelEnded?.Invoke(result);
         }
 
