@@ -44,12 +44,12 @@ namespace Game
         public int CurrentRound { get; private set; }
         public DuelPhase Phase { get; private set; }   // 지금 단계 (처음에는 Ready)
         public float SignalTime { get; private set; }  // 신호가 울린 시각 (Time.time). 반응속도 = 쏜 시각 - SignalTime
+        public float SignalAt { get; private set; }    // 이번 라운드 신호가 울릴 예정 시각 (Time.time). RoundStarted 를 방송할 때 이미 정해져 있다
 
         private EnemyDef enemyDef;
         private EnemyDuelist enemy;
 
         // 지금 라운드의 상태
-        private float signalAt;       // 이번 라운드 신호가 울릴 예정 시각 (Time.time)
         private bool playerFired;
         private bool enemyFired;
         private float playerReactionTime;   // 신호부터 플레이어가 쏠 때까지 (초). playerFired 일 때만 의미가 있다
@@ -119,14 +119,17 @@ namespace Game
                 //   1라운드 : 소켓의 Starting Selected Interactable 이 꽂아 둔다
                 //   2라운드부터 : 앞 라운드 ⑤ WaitForHolster 가 꽂힌 것을 확인하고 넘어온다
                 Debug.Log($"[StageManager] {round}라운드 대치");
+
+                // 신호 시각을 미리 정해 둔다
+                //   RoundStarted 보다 먼저 정하는 이유 : 정오의 해(NoonSun)가 방송을 듣자마자 "신호가 언제인지" 알아야 해서
+                Vector2 delay = round == 1 ? firstSignalDelay : signalDelay;
+                SignalAt = Time.time + Random.Range(delay.x, delay.y);
                 RoundStarted?.Invoke(round);
 
-                // 신호 시각을 미리 정해 두고, 그때까지 기다린다
+                // 신호 시각까지 기다린다
                 //   WaitForSeconds 대신 한 프레임씩 기다리는 이유 : 기다리는 도중 반칙이 나면 바로 멈춰야 해서
-                Vector2 delay = round == 1 ? firstSignalDelay : signalDelay;
-                signalAt = Time.time + Random.Range(delay.x, delay.y);
                 Phase = DuelPhase.Standoff;
-                while (Phase == DuelPhase.Standoff && Time.time < signalAt)
+                while (Phase == DuelPhase.Standoff && Time.time < SignalAt)
                     yield return null;
 
                 // 대치 중에 반칙으로 끝났다 (HandlePlayerDrew → EndRound 가 Judged 로 바꿨다)
@@ -296,7 +299,7 @@ namespace Game
             result.Outcome = outcome;
             result.HitPart = hitPart;
             if (outcome == RoundOutcome.Foul)
-                result.FoulEarly = signalAt - Time.time;   // 신호 예정 시각까지 남은 시간 = 몇 초 먼저 뽑았나
+                result.FoulEarly = SignalAt - Time.time;   // 신호 예정 시각까지 남은 시간 = 몇 초 먼저 뽑았나
 
             result.PlayerFired = playerFired;
             result.PlayerReactionTime = playerReactionTime;
