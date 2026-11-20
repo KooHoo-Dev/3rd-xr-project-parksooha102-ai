@@ -19,7 +19,8 @@ namespace Game
     }
 
     // [스테이지 매니저] 결투 한 판의 라운드 흐름을 돌리고, 지금 무슨 일이 일어났는지 "방송" 한다.
-    [DefaultExecutionOrder(-50)]   // CombatManager(-100) 다음, 적 · 결과판(기본 0) 보다 먼저 Instance 를 채운다
+    //   적은 내가 만들어서 들고 있으므로 방송하지 않고 직접 시킨다 (적은 StageManager 를 모른다)
+    [DefaultExecutionOrder(-50)]   // CombatManager(-100) 다음, 해 · 쪽지 · 결과판(기본 0) 보다 먼저 Instance 를 채운다
     public class StageManager : MonoBehaviour
     {
         public static StageManager Instance { get; private set; }
@@ -112,7 +113,6 @@ namespace Game
             if (enemy == null)
                 throw new Exception($"[StageManager] {enemyDef.Prefab.name} 에 EnemyDuelist 가 없습니다. 적 프리팹 맨 위에 EnemyDuelist 를 붙여 주세요.");
 
-            enemy.Init(enemyDef);
             enemy.Fired += HandleEnemyFired;
         }
 
@@ -143,6 +143,7 @@ namespace Game
                 //   RoundStarted 보다 먼저 정하는 이유 : 정오의 해(NoonSun)가 방송을 듣자마자 "신호가 언제인지" 알아야 해서
                 Vector2 delay = round == 1 ? firstSignalDelay : signalDelay;
                 SignalAt = Time.time + Random.Range(delay.x, delay.y);
+                enemy.BeginRound(enemyDef.GetRound(round));   // 적에게는 이번 라운드 줄을 건네며 직접 시킨다
                 RoundStarted?.Invoke(round);
 
                 // 신호 시각까지 기다린다
@@ -161,6 +162,7 @@ namespace Game
                 Phase = DuelPhase.Draw;
                 CombatManager.Instance.UnlockPlayerGun();   // 이 라운드의 한 발
                 Debug.Log($"[StageManager] {round}라운드 신호!");
+                enemy.Draw();   // 적이 뽑고, 자기 격발 시각에 쏜다 (쏘면 HandleEnemyFired 로 온다)
                 DrawSignaled?.Invoke();
 
                 // ③ 판정이 날 때까지 기다린다. 총을 쏘면 HandlePlayerFired / HandleEnemyFired 가 판정한다
@@ -359,6 +361,7 @@ namespace Game
             if (outcome == RoundOutcome.PlayerWin) detail = $" ({hitPart}, 반응속도 {playerReactionTime:0.00}초)";
             if (outcome == RoundOutcome.Foul) detail = $" (신호보다 {result.FoulEarly:0.00}초 먼저 뽑음)";
             Debug.Log($"[StageManager] {CurrentRound}라운드 판정 : {outcome}{detail}");
+            enemy.EndRound(result);   // 아직 안 쐈으면 멈추고, 맞았으면 쓰러진다
             RoundEnded?.Invoke(result);
         }
 

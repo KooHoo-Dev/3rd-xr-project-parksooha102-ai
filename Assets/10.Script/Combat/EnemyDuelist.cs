@@ -6,7 +6,9 @@ using Random = UnityEngine.Random;
 
 namespace Game
 {
-    // 결투하는 적. StageManager 의 방송을 듣고 "자기 표대로" 움직인다.
+    // 결투하는 적. StageManager 가 라운드마다 시키는 대로 움직이고, 쏘면 Fired 로 알린다.
+    //   적은 StageManager 를 모른다. 나를 만든 StageManager 가 아래 API 를 직접 부른다 (한 방향)
+    //   (교안에서 Spawner 가 만든 Enemy 에게 직접 일을 시키는 것과 같다)
     [RequireComponent(typeof(Animator))]
     public class EnemyDuelist : MonoBehaviour
     {
@@ -22,47 +24,11 @@ namespace Game
         public event Action<bool> Fired;
 
         private Animator animator;
-        private EnemyDef enemyDef;   // 내 표 (5라운드 분량)
-        private RoundDef roundDef;   // 이번 라운드 줄
+        private RoundDef roundDef;   // 이번 라운드 줄 (BeginRound 가 받아 둔다)
 
         private void Awake()
         {
             animator = GetComponent<Animator>();
-        }
-
-        private void OnEnable()
-        {
-            StageManager.Instance.RoundStarted += HandleRoundStarted;
-            StageManager.Instance.DrawSignaled += HandleDrawSignaled;
-            StageManager.Instance.RoundEnded += HandleRoundEnded;
-        }
-
-        private void OnDisable()
-        {
-            StageManager.Instance.RoundStarted -= HandleRoundStarted;
-            StageManager.Instance.DrawSignaled -= HandleDrawSignaled;
-            StageManager.Instance.RoundEnded -= HandleRoundEnded;
-        }
-
-        // 나를 만든 쪽이 내 표를 건네준다
-        public void Init(EnemyDef def)
-        {
-            enemyDef = def;
-        }
-
-        // ① 대치 시작
-        private void HandleRoundStarted(int round)
-        {
-            roundDef = enemyDef.GetRound(round);
-            animator.SetBool(IsAiming, false);   // Draw / Fire → Idle 화살표를 탄다. 1라운드는 이미 Idle 이라 그대로
-        }
-
-        // ② 정오 신호 → 드로우, 그리고 내 격발 시각에 쏘기
-        private void HandleDrawSignaled()
-        {
-            animator.SetBool(IsAiming, true);    // Idle → Draw
-            float fireTime = roundDef.FireTime + Random.Range(-FireTimeJitter, FireTimeJitter);
-            StartCoroutine(FireAfter(fireTime));
         }
 
         private IEnumerator FireAfter(float seconds)
@@ -80,8 +46,25 @@ namespace Game
             Fired?.Invoke(isHit);
         }
 
+        // ---------------------------------------------------------------- API (StageManager 가 부른다)
+
+        // ① 대치 시작 : 이번 라운드 줄을 받아 두고 대기 자세로
+        public void BeginRound(RoundDef round)
+        {
+            roundDef = round;
+            animator.SetBool(IsAiming, false);   // Draw / Fire → Idle 화살표를 탄다. 1라운드는 이미 Idle 이라 그대로
+        }
+
+        // ② 정오 신호 → 드로우, 그리고 내 격발 시각에 쏘기
+        public void Draw()
+        {
+            animator.SetBool(IsAiming, true);    // Idle → Draw
+            float fireTime = roundDef.FireTime + Random.Range(-FireTimeJitter, FireTimeJitter);
+            StartCoroutine(FireAfter(fireTime));
+        }
+
         // ③ 판정 끝
-        private void HandleRoundEnded(RoundResult result)
+        public void EndRound(RoundResult result)
         {
             // 아직 안 쐈으면 취소 (플레이어가 먼저 맞혔거나, 시간 초과)
             StopAllCoroutines();
