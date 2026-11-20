@@ -5,28 +5,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 namespace Game
 {
-    // 총
-    // 총이 하는 일만 둔다. (교안 FishingRod 가 낚싯대 일만 하는 것처럼)
-    //   잡히는 일              → XR Grab Interactable
-    //                             손으로 직접 잡기(가까이)와 레이로 잡기(멀리) 둘 다 된다. (XRI 기본, Near-Far Interactor)
-    //                             잡히는 범위는 총 모델의 Mesh Collider 다.
-    //   홀스터에 꽂히는 일      → XR Socket Interactor + HolsterSlot (Holster 오브젝트)
-    //   총은 홀스터를 모른다. 홀스터 쪽이 총을 안다.
-    //   쏘는 일                → Fire() : 총구에서 레이를 쏘고, 결과를 Fired 이벤트로 내보낸다
-    //   총은 누가 듣는지 모른다. CombatManager 가 총을 알고 Fired 를 구독한다. (홀스터가 총을 아는 것과 같다)
-    //   맞은 다음 일(쓰러지기, 점수, 소리)은 CombatManager 의 PlayerFired 를 구독한 쪽이 한다.
-    //
-    // 지금 하는 일
-    //   잡은 손으로 트리거를 당기면(activated) Fire() 가 불린다.
-    //   잠겨 있으면(IsLocked) 트리거를 당겨도 나가지 않는다.
-    //   총은 "잠김 / 풀림" 스위치만 가진다. 언제 잠그고 풀지(라운드당 한 발)는 라운드를 아는 StageManager 가 정한다.
-    //     StageManager ──▶ CombatManager.LockPlayerGun / UnlockPlayerGun ──▶ Gun.Lock / Unlock
-    //   처음에는 풀려 있다. 그래서 StageManager 가 없는 테스트 씬(ShotTester)에서는 당기는 만큼 쏜다.
-    //
-    // 사용법
-    //   총 오브젝트(SM_Wep_Revolver_01)에 XR Grab Interactable 과 같이 붙인다.
-    //     Muzzle : 총의 Muzzle (총알이 나갈 자리, 파란 화살표(z)가 앞)
-    //     Range  : 총알이 닿는 거리 (m)
+    // 총. 트리거를 당기면 총구에서 레이를 쏘고, 결과를 Fired 로 내보낸다. 잠겨 있으면 나가지 않는다.
     [RequireComponent(typeof(XRGrabInteractable))]
     public class Gun : MonoBehaviour
     {

@@ -11,19 +11,7 @@ using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 
 /// <summary>
-/// 헤드셋 없이 XR Interaction Simulator로 바로 Play 테스트할 수 있게
-/// 씬과 프로젝트 설정을 교안(00. Panorama Night Lake)과 같은 구성으로 맞춰 준다.
-///
-/// 메뉴: Tools > XR 테스트 환경
-///  - 현재 씬 구성하기 : 열려 있는 씬에 빠진 것만 추가한다 (이미 있는 것은 건드리지 않음).
-///  - 새 테스트 씬 만들기 : 빈 씬을 만들고 같은 구성을 넣은 뒤 저장한다.
-///
-/// 구성 내용 (교안 씬과 동일)
-///  - XR Origin (XR Rig)            : Starter Assets 프리팹
-///  - XR Interaction Manager
-///  - Event System + XR UI Input Module
-///  - 바닥 (XR Origin에 중력이 있어서 바닥이 없으면 계속 떨어짐)
-///  - Project Settings: XR Interaction Simulator 자동 생성 켜기
+/// 헤드셋 없이 XR Interaction Simulator 로 바로 Play 테스트할 수 있게 씬과 프로젝트 설정을 맞춰 준다.
 /// </summary>
 public static class XRSimulatorSceneSetup
 {

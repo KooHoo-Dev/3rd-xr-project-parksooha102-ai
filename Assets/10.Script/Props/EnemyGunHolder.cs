@@ -2,18 +2,7 @@ using UnityEngine;
 
 namespace Game
 {
-    // 적의 총을 홀스터 ↔ 오른손으로 옮겨 주는 객체
-    // 스스로는 아무것도 하지 않고, 애니메이션 이벤트가 부른다.
-    //   Enemy_Draw 0.12초 (손이 손잡이를 잡는 순간) → GrabGun
-    //   Enemy_Idle 0초   (대기로 돌아오는 순간)    → HolsterGun
-    //
-    // 사용법
-    //   Animator 와 같은 오브젝트(적 프리팹 맨 위)에 붙인다. 애니메이션 이벤트는 Animator 가 있는 오브젝트에서만 받는다.
-    //   Inspector 에서 아래 세 칸(Gun, Holster Point, Hand Point)을 채운다.
-    //
-    //   총이 손이나 홀스터에 어색하게 들려 있으면, 총이 아니라 "자리(Point)" 오브젝트를 옮긴다.
-    //     Prefab 모드에서 GunHandPoint (Hand_R 밑), GunHolsterPoint (홀스터 밑) 의 Position / Rotation 조절
-    //     총은 자리의 자식이 되면서 Position, Rotation 이 0 으로 맞춰지므로, 자리만 맞추면 된다
+    // 적의 총을 홀스터 ↔ 오른손으로 옮겨 주는 객체. 애니메이션 이벤트가 부른다.
     public class EnemyGunHolder : MonoBehaviour
     {
         [Header("참조")]
