@@ -7,21 +7,6 @@ using Random = UnityEngine.Random;
 namespace Game
 {
     // 결투하는 적. StageManager 의 방송을 듣고 "자기 표대로" 움직인다.
-    //   매니저는 이 적이 몇 초에 쏘는지, 명중률이 얼마인지 모른다. 그건 적 자신이 표(EnemyDef)를 보고 정한다.
-    //
-    //   방송                 →  하는 일                                    →  Animator 파라미터
-    //   RoundStarted(라운드)     이번 라운드 표를 꺼내 둔다. 대기 자세로        IsAiming = false
-    //   DrawSignaled()           드로우. 격발 시각(± 0.08초)에 쏜다            IsAiming = true → Fire
-    //   RoundEnded(결과)         쏘려던 것을 취소. 플레이어가 이겼으면 쓰러짐    HitPart + Die
-    //
-    // 쏘면 Fired(맞혔나) 로 알린다. 받는 쪽은 StageManager 다 (적을 만든 쪽이 구독한다).
-    //
-    // Animator 는 교안(Mini Defence Enemy)과 같은 방식이다 : 파라미터를 바꾸면 컨트롤러의 전이 화살표가 상태를 고른다
-    //   파라미터 이름은 EnemyDuel.controller 의 Parameters 와 같아야 한다
-    //
-    // 사용법
-    //   적 프리팹 맨 위(Animator 가 있는 곳)에 붙인다.
-    //   적을 만든 쪽이 Instantiate 직후 Init(표) 를 불러 준다.
     [RequireComponent(typeof(Animator))]
     public class EnemyDuelist : MonoBehaviour
     {
@@ -85,7 +70,12 @@ namespace Game
             yield return new WaitForSeconds(seconds);
 
             animator.SetTrigger(Fire);           // Draw → Fire
-            bool isHit = Random.value < roundDef.HitRate;   // 명중률 0.35 → 0 ~ 1 사이 랜덤이 0.35 보다 작으면 맞힘
+
+            // 명중률 0.35 → 0 ~ 1 사이 랜덤이 0.35 이하면 맞힘
+            //   < 가 아니라 <= 인 이유 : Random.value 는 1.0 도 나온다 (0 과 1 을 둘 다 포함한다)
+            //   < 로 쓰면 명중률 1(100%)인 마지막 라운드도 아주 드물게 빗나가서, 무승부가 나고 StageManager 가 멈춘다
+            //   (반대로 명중률 0 인 줄은 0.0 이 나오면 맞는데, 표에 명중률 0 인 줄은 없다)
+            bool isHit = Random.value <= roundDef.HitRate;
             Debug.Log($"[EnemyDuelist] {name} 격발 — " + (isHit ? "명중" : "빗나감"));
             Fired?.Invoke(isHit);
         }
