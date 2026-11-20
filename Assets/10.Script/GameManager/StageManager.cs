@@ -35,13 +35,15 @@ namespace Game
         private const float GroundRayHeight = 5f;
         private const float GroundRayLength = 20f;
 
+        // 메인화면 씬 이름. Build Profiles 의 Scene List 에 들어 있어야 열 수 있다
+        private const string MainMenuSceneName = "Title";
+
         [Header("연결")]
         [SerializeField] private PlayerPlacer playerPlacer;   // 플레이어를 결투 자리에 세운다 (어디에 세울지는 내가 알려 준다)
         [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
         [SerializeField] private LayerMask groundLayer;                            // 바닥 레이어 (Ground). 플레이어 · 적 · 전진 표식을 이 바닥 높이에 세운다
-        [SerializeField] private Difficulty difficulty = Difficulty.Normal;
         [SerializeField] private Vector2 firstSignalDelay = new Vector2(5f, 8f);   // 1라운드 대치 시간 (최소, 최대)
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
         [SerializeField] private float drawTimeLimit = 3f;                         // 신호 후 이 시간이 지나면 안 쏜 것으로 본다
@@ -102,9 +104,11 @@ namespace Game
         }
 
         // 표에서 이번 난이도의 적을 꺼내 만든다. 매니저가 아는 것은 "EnemyDuelist 가 붙어 있다" 뿐이다
+        //   난이도는 메인화면에서 고른 값 (GameSettings). Town 을 바로 Play 하면 보통
         private void SpawnEnemy()
         {
-            enemyDef = DataManager.Instance.GetEnemyDef(difficulty);
+            enemyDef = DataManager.Instance.GetEnemyDef(GameSettings.Difficulty);
+            Debug.Log($"[StageManager] {enemyDef.Difficulty} 난이도 적 등장");
             GameObject enemyObject = Instantiate(enemyDef.Prefab);
 
             enemy = enemyObject.GetComponent<EnemyDuelist>();
@@ -178,7 +182,7 @@ namespace Game
                 // 마지막 라운드는 적 명중률이 100% 라서 무승부가 날 수 없다 (기획서 3장)
                 //   여기 왔다면 표가 잘못된 것이다. 결과판도 안 뜨고 멈춰 있지 않게 바로 알린다
                 if (round == enemyDef.RoundCount)
-                    throw new Exception($"[StageManager] 마지막 {round}라운드가 무승부로 끝났습니다. enemies.json 의 {difficulty} 마지막 라운드가 HitRate 1, FireTime {drawTimeLimit}초 미만인지 확인해 주세요.");
+                    throw new Exception($"[StageManager] 마지막 {round}라운드가 무승부로 끝났습니다. enemies.json 의 {enemyDef.Difficulty} 마지막 라운드가 HitRate 1, FireTime {drawTimeLimit}초 미만인지 확인해 주세요.");
 
                 // ⑤ 무승부 → 총을 홀스터에 꽂아야 다음으로
                 yield return WaitForHolster();
@@ -379,6 +383,14 @@ namespace Game
         {
             Debug.Log("[StageManager] 다시 결투");
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
+
+        // 메인화면으로 (결과판의 '메인으로' 버튼이 부른다)
+        //   난이도 · 홀스터 자리는 GameSettings(static)에 남아 있어서, 메인화면이 지난번 값 그대로 열린다
+        public void ReturnToMainMenu()
+        {
+            Debug.Log("[StageManager] 메인화면으로");
+            SceneManager.LoadScene(MainMenuSceneName);
         }
     }
 }

@@ -22,6 +22,7 @@ namespace Game
         [SerializeField] private TMP_Text detailText;   // 가운데 : 결투 정리 (점수 내역 / 진 라운드 · 가장 빠른 반응)
         [SerializeField] private TMP_Text rewardText;   // 맨 아래 : 점수 (REWARD $ 2,580)
         [SerializeField] private Button retryButton;
+        [SerializeField] private Button mainMenuButton;
 
         [Header("설정")]
         [SerializeField] private float distance = 1.5f;   // 머리에서 결과판까지 (m). 손을 뻗지 않고 레이로 누르는 거리
@@ -35,12 +36,14 @@ namespace Game
         {
             StageManager.Instance.DuelEnded += HandleDuelEnded;
             retryButton.onClick.AddListener(HandleRetryClicked);
+            mainMenuButton.onClick.AddListener(HandleMainMenuClicked);
         }
 
         private void OnDisable()
         {
             StageManager.Instance.DuelEnded -= HandleDuelEnded;
             retryButton.onClick.RemoveListener(HandleRetryClicked);
+            mainMenuButton.onClick.RemoveListener(HandleMainMenuClicked);
         }
 
         // 결투가 끝났다 (StageManager 가 알려 줌)
@@ -126,6 +129,12 @@ namespace Game
         private void HandleRetryClicked()
         {
             StageManager.Instance.RestartDuel();
+        }
+
+        // '메인으로' 버튼을 눌렀다
+        private void HandleMainMenuClicked()
+        {
+            StageManager.Instance.ReturnToMainMenu();
         }
     }
 }
