@@ -3,6 +3,7 @@ using System.Collections;
 using Game.Table;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 using Random = UnityEngine.Random;
 
 namespace Game
@@ -35,10 +36,12 @@ namespace Game
         private const float GroundRayLength = 20f;
 
         [Header("연결")]
+        [SerializeField] private TeleportationProvider teleportationProvider;   // XR Origin → Locomotion → Teleportation. 시작할 때 플레이어를 출발점으로 옮긴다
         [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
         [SerializeField] private LayerMask groundLayer;                            // 바닥 레이어 (Ground). 적 · 전진 표식을 이 바닥 높이에 세운다
+        [SerializeField] private float startTeleportDelay = 0.5f;                  // 켜고 이만큼 뒤에 플레이어를 출발점으로 옮긴다 (헤드셋 위치가 들어올 때까지)
         [SerializeField] private Difficulty difficulty = Difficulty.Normal;
         [SerializeField] private Vector2 firstSignalDelay = new Vector2(5f, 8f);   // 1라운드 대치 시간 (최소, 최대)
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
@@ -116,6 +119,11 @@ namespace Game
         // 결투 한 판. 라운드를 하나씩 돌고, 승부가 나면 for 를 빠져나가 결과판을 띄운다
         private IEnumerator DuelRoutine()
         {
+            // ⓪ 플레이어를 결투 출발점에 세우고 적 쪽을 보게 한다
+            //    켜자마자는 헤드셋 위치가 아직 안 들어왔을 수 있어서 (그러면 엉뚱한 자리를 기준으로 옮긴다), 잠깐 기다렸다가 옮긴다
+            yield return new WaitForSeconds(startTeleportDelay);
+            TeleportPlayerToStart();
+
             for (int round = 1; round <= enemyDef.RoundCount; round++)
             {
                 // ① 대치
@@ -193,8 +201,9 @@ namespace Game
         private IEnumerator WaitForAdvance(int nextRound)
         {
             // ① 표식을 다음 라운드 플레이어 자리에 켠다 (거리가 1m 씩 줄면 지금 자리에서 0.5m 앞)
+            //    표식이 적 쪽을 보게 놓는다 → 도착한 플레이어도 적 쪽을 보게 된다 (기획서 8장)
             isAdvanced = false;
-            advanceMarker.Show(GetPlayerPosition(nextRound));
+            advanceMarker.Show(GetPlayerPosition(nextRound), Quaternion.LookRotation(DuelForward));
             Debug.Log("[StageManager] 전진 표식으로 텔레포트하면 다음 라운드");
 
             // ② 이동할 때까지 기다린다 (HandleAdvanced 가 isAdvanced 를 켠다)
@@ -253,6 +262,20 @@ namespace Game
             position = GetGroundPosition(position);   // 바닥이 울퉁불퉁하니 그 자리 땅 높이에 맞춘다 (안 그러면 뜨거나 묻힌다)
             Quaternion rotation = Quaternion.LookRotation(-DuelForward);   // 플레이어를 바라보게
             enemy.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        // 플레이어를 결투 출발점에 세우고 적 쪽(DuelForward)을 보게 한다 (텔레포트 앵커가 하는 일을 코드로 한 번)
+        //   XR Origin 뿌리가 아니라 플레이어 몸(머리 바로 아래 바닥)이 출발점에 오고, 머리 방향이 적 쪽으로 돌아간다
+        //   → 방 안 어디에 서서 어느 쪽을 보고 시작했든 출발점에서 적을 보게 된다
+        //   요청만 넣어 두면 TeleportationProvider 가 다음 Update 에서 옮긴다
+        private void TeleportPlayerToStart()
+        {
+            TeleportRequest request = new TeleportRequest();
+            request.destinationPosition = GetGroundPosition(DuelStartPosition);
+            request.destinationRotation = Quaternion.LookRotation(DuelForward);
+            request.matchOrientation = MatchOrientation.TargetUpAndForward;   // 위 방향 + 앞 방향까지 맞춘다
+            request.requestTime = Time.time;
+            teleportationProvider.QueueTeleportRequest(request);
         }
 
         // position 바로 위에서 아래로 레이를 쏴서, 땅에 닿은 자리를 돌려준다 (x, z 는 그대로, y 만 땅 높이로)
