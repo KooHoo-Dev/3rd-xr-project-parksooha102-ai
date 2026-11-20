@@ -29,10 +29,16 @@ namespace Game
         private static readonly Vector3 DuelStartPosition = Vector3.zero;
         private static readonly Vector3 DuelForward = Vector3.forward;
 
+        // 바닥 찾기 레이 : 놓을 자리에서 이만큼 위에서 출발해, 이 길이만큼 아래로 쏜다
+        //   (출발점보다 5m 높은 땅부터 15m 낮은 땅까지 찾을 수 있다)
+        private const float GroundRayHeight = 5f;
+        private const float GroundRayLength = 20f;
+
         [Header("연결")]
         [SerializeField] private AdvanceMarker advanceMarker;
 
         [Header("설정")]
+        [SerializeField] private LayerMask groundLayer;                            // 바닥 레이어 (Ground). 적 · 전진 표식을 이 바닥 높이에 세운다
         [SerializeField] private Difficulty difficulty = Difficulty.Normal;
         [SerializeField] private Vector2 firstSignalDelay = new Vector2(5f, 8f);   // 1라운드 대치 시간 (최소, 최대)
         [SerializeField] private Vector2 signalDelay = new Vector2(2f, 5f);        // 2라운드부터
@@ -232,7 +238,8 @@ namespace Game
         {
             float firstDistance = enemyDef.GetRound(1).Distance;
             float distance = enemyDef.GetRound(round).Distance;
-            return DuelStartPosition + DuelForward * ((firstDistance - distance) / 2f);
+            Vector3 position = DuelStartPosition + DuelForward * ((firstDistance - distance) / 2f);
+            return GetGroundPosition(position);   // 바닥이 울퉁불퉁하니 그 자리 땅 높이에 맞춘다
         }
 
         // 라운드마다 적 자리 : 적 = 플레이어 + 이번 거리
@@ -243,8 +250,20 @@ namespace Game
             float firstDistance = enemyDef.GetRound(1).Distance;
             float distance = enemyDef.GetRound(round).Distance;
             Vector3 position = DuelStartPosition + DuelForward * ((firstDistance + distance) / 2f);
+            position = GetGroundPosition(position);   // 바닥이 울퉁불퉁하니 그 자리 땅 높이에 맞춘다 (안 그러면 뜨거나 묻힌다)
             Quaternion rotation = Quaternion.LookRotation(-DuelForward);   // 플레이어를 바라보게
             enemy.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        // position 바로 위에서 아래로 레이를 쏴서, 땅에 닿은 자리를 돌려준다 (x, z 는 그대로, y 만 땅 높이로)
+        //   groundLayer 만 맞히므로 적 몸통 · 머리 콜라이더나 소품에는 걸리지 않는다
+        private Vector3 GetGroundPosition(Vector3 position)
+        {
+            Vector3 rayStart = position + Vector3.up * GroundRayHeight;
+            if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, GroundRayLength, groundLayer) == false)
+                throw new Exception($"[StageManager] {position} 아래에서 바닥을 못 찾았습니다. StageManager 의 Ground Layer 를 골랐는지, 그 자리 바닥 타일의 Layer 가 Ground 인지 확인해 주세요.");
+
+            return hit.point;
         }
 
         // 플레이어가 쐈다 (CombatManager 가 알려 줌)
