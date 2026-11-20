@@ -20,7 +20,7 @@ namespace Game
         [SerializeField] private GameObject panel;
         [SerializeField] private TMP_Text resultText;   // 가운데 줄 (Subtitle 오브젝트) : WIN / LOSE / COWARD
         [SerializeField] private TMP_Text detailText;   // 가운데 : 결투 정리 (점수 내역 / 진 라운드 · 가장 빠른 반응)
-        [SerializeField] private TMP_Text rewardText;   // 맨 아래 : 점수 (REWARD $ 2,080)
+        [SerializeField] private TMP_Text rewardText;   // 맨 아래 : 점수 (REWARD $ 2,580)
         [SerializeField] private Button retryButton;
 
         [Header("설정")]
@@ -66,7 +66,7 @@ namespace Game
             //    맨 아래 보상은 모든 결과가 같은 모양이다. 지거나 반칙하면 Score 가 0 이라 REWARD $ 0
             //    $"REWARD $ {result.Score:N0}" 읽는 법
             //      맨 앞 $" 는 "{ } 안에 값을 넣는 글자" 라는 표시, REWARD 뒤의 $ 는 그냥 달러 글자다.
-            //      { } 안이 값 자리이고, :N0 은 소수점 없이 세 자리마다 쉼표 (2080 → 2,080)
+            //      { } 안이 값 자리이고, :N0 은 소수점 없이 세 자리마다 쉼표 (2580 → 2,580)
             rewardText.SetText($"REWARD $ {result.Score:N0}");
 
             // ② 머리 앞 distance(m) 로 옮긴다. 방향은 Inspector 에서 돌려 둔 그대로 (적 쪽)
@@ -87,8 +87,7 @@ namespace Game
             // 점수 조각 (ScoreCalculator.Calculate 와 같은 함수)
             int speedScore = ScoreCalculator.GetSpeedScore(winRound.PlayerReactionTime);
             int bonus = ScoreCalculator.GetBonus(winRound.HitPart);
-            int penalty = ScoreCalculator.GetRoundPenalty(winRound.Round);
-            string penaltyText = penalty == 0 ? "0" : $"-{penalty}";   // 1라운드는 감점이 없다
+            int roundBonus = ScoreCalculator.GetRoundBonus(winRound.Round);
 
             // <align=left>  : 이 글자만 왼쪽 정렬 (나머지 결과는 가운데 정렬 그대로)
             // <indent=6%>   : 줄마다 왼쪽을 조금 띄운다 (종이의 그을린 가장자리에서 떨어지게)
@@ -97,7 +96,7 @@ namespace Game
                 $"기본{NumberColumn}+{result.BaseScore:N0}\n" +
                 $"반응속도 {winRound.PlayerReactionTime:0.00}초{NumberColumn}+{speedScore}\n" +
                 $"{HitPartNames.Get(winRound.HitPart)} 명중{NumberColumn}+{bonus}\n" +
-                $"{winRound.Round}라운드{NumberColumn}{penaltyText}");
+                $"{winRound.Round}라운드{NumberColumn}+{roundBonus}");
         }
 
         // 패배 : LOSE + 진 라운드, 가장 빠른 반응

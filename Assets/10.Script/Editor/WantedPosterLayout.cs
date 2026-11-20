@@ -124,7 +124,7 @@ namespace Game.EditorTools
                 "기본<pos=70%>+1,000\n" +
                 "반응속도 0.82초<pos=70%>+680\n" +
                 "머리 명중<pos=70%>+500\n" +
-                "2라운드<pos=70%>-100",
+                "2라운드<pos=70%>+400",
                 40, InkBrown, FontStyles.Normal);
             detail.lineSpacing = 30;
             detail.enableAutoSizing = true;      // 줄이 길거나 많으면(승리는 4줄) 칸에 맞게 줄인다
@@ -136,7 +136,7 @@ namespace Game.EditorTools
 
             TextMeshProUGUI reward = GetText(panel, "Reward");
             PlaceFromTop(reward.rectTransform, 632, 520, 100);
-            SetText(reward, font, "REWARD $ 2,080", 64, InkRed, FontStyles.Bold);
+            SetText(reward, font, "REWARD $ 2,580", 64, InkRed, FontStyles.Bold);
             reward.characterSpacing = 4;
 
             Button retryButton = GetButton(panel, "RetryButton");
