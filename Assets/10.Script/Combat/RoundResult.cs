@@ -13,7 +13,7 @@ namespace Game
     //   라운드 하나에서 일어난 일만 담는다. 결투 전체의 일(점수, 가장 빠른 반응)은 DuelResult 에 담는다 (아래)
     public struct RoundResult
     {
-        public int Round;              // 몇 라운드였나 (1 ~ 5)
+        public int Round;              // 몇 라운드였나 (1 ~ 6)
         public RoundOutcome Outcome;
         public HitPart HitPart;        // 플레이어가 맞힌 부위. Outcome 이 PlayerWin 일 때만 의미가 있다
         public float FoulEarly;        // 신호보다 몇 초 먼저 뽑았나. Outcome 이 Foul 일 때만 의미가 있다 (결과판 : "2.3초 먼저 뽑았다")

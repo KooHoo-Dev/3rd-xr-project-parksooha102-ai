@@ -60,7 +60,7 @@ namespace Game.Table
     [Serializable]
     public class RoundDef
     {
-        public int Round;        // 라운드 번호 (1 ~ 5)
+        public int Round;        // 라운드 번호 (1 ~ 6). 6 = 리볼버 6발
         public float Distance;   // 적과의 거리 (m). 텔레포트 앵커 위치와 맞아야 해서 난이도끼리 같은 값을 쓴다
         public float FireTime;   // 신호 후 적이 쏘기까지 걸리는 시간 (초). 실제로는 여기에 ±0.08초를 더한다
         public float HitRate;    // 적 명중률 (0 ~ 1). 0.35 = 35%
