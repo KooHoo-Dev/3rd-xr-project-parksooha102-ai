@@ -2,6 +2,7 @@
   {
     "Difficulty": "Easy",
     "PrefabKey": "Enemies/SM_Chr_Cowboy_01",
+    "Name": "풋내기 조니",
     "BaseScore": 700,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.30, "HitRate": 0.20 },
@@ -14,6 +15,7 @@
   {
     "Difficulty": "Normal",
     "PrefabKey": "Enemies/SM_Chr_Gunman_01",
+    "Name": "방울뱀 잭",
     "BaseScore": 1000,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.10, "HitRate": 0.35 },
@@ -26,6 +28,7 @@
   {
     "Difficulty": "Hard",
     "PrefabKey": "Enemies/SM_Chr_Badguy_01",
+    "Name": "검은 늑대 빌",
     "BaseScore": 1500,
     "Rounds": [
       { "Round": 1, "Distance": 10, "FireTime": 1.00, "HitRate": 0.45 },

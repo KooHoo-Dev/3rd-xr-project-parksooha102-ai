@@ -48,6 +48,9 @@ namespace Game.Table
                 // 글자 "Easy" → Difficulty.Easy  (int.Parse 가 글자를 숫자로 바꾸듯, Enum.Parse 는 글자를 enum 으로 바꾼다)
                 enemyDto.Difficulty = Enum.Parse<Difficulty>((string)enemyRow["Difficulty"]);
                 enemyDto.PrefabKey = (string)enemyRow["PrefabKey"];
+                enemyDto.Name = (string)enemyRow["Name"];
+                if (string.IsNullOrEmpty(enemyDto.Name))
+                    throw new Exception($"[EnemyTable] {enemyDto.Difficulty} : \"Name\" 이 비어 있습니다. enemies.json 에 수배지에 적을 이름을 넣어 주세요.");
                 enemyDto.BaseScore = (int)enemyRow["BaseScore"];
 
                 // "Rounds": [ {...}, {...} ]  ← 적 한 명 안에 라운드 목록이 또 있다. 한 번 더 foreach
@@ -84,6 +87,7 @@ namespace Game.Table
                 {
                     Difficulty = enemyDto.Difficulty,
                     Prefab = prefab,
+                    Name = enemyDto.Name,             // 글자 그대로 넘긴다
                     BaseScore = enemyDto.BaseScore,   // 숫자라서 해석할 것이 없다. 그대로 넘긴다
                     Rounds = enemyDto.Rounds,   // 라운드는 해석할 것이 없어서 그대로 넘긴다
                 };
