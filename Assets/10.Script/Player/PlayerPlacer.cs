@@ -26,6 +26,9 @@ namespace Game
         private Vector3 standPosition;
         private Quaternion standRotation;
 
+        // 플레이어 머리 (Main Camera). 적이 총알 궤적을 어디로 보낼지 정할 때 쓴다
+        public Transform Head => head;
+
         // 위치 초기화 이벤트를 보내 주는 쪽 (보통 1개)
         private List<XRInputSubsystem> subsystems = new List<XRInputSubsystem>();
 

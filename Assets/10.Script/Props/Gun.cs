@@ -11,6 +11,7 @@ namespace Game
     {
         [Header("연결")]
         [SerializeField] private Transform muzzle;
+        [SerializeField] private GunEffects effects;   // 총성 · 총구 화염 · 궤적 (보통 Muzzle 에 붙어 있다)
 
         [Header("설정")]
         [SerializeField] private float range = 50f;   // 결투 거리는 최대 10m 라서 넉넉하게
@@ -89,7 +90,10 @@ namespace Game
                 shot.Point = muzzle.position + muzzle.forward * range;
             }
 
-            // ④ "쐈다" 고 내보낸다. 누가 듣는지, 그다음 무엇을 하는지는 총이 모른다
+            // ④ 쏜 모습 : 총성 · 총구 화염, 그리고 닿은 곳까지 궤적
+            effects.Play(shot.Point);
+
+            // ⑤ "쐈다" 고 내보낸다. 누가 듣는지, 그다음 무엇을 하는지는 총이 모른다
             Fired?.Invoke(shot);
         }
     }

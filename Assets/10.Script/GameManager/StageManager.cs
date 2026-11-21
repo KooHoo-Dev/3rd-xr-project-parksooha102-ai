@@ -164,7 +164,7 @@ namespace Game
                 Phase = DuelPhase.Draw;
                 CombatManager.Instance.UnlockPlayerGun();   // 이 라운드의 한 발
                 Debug.Log($"[StageManager] {round}라운드 신호!");
-                enemy.Draw();   // 적이 뽑고, 자기 격발 시각에 쏜다 (쏘면 HandleEnemyFired 로 온다)
+                enemy.Draw(playerPlacer.Head);   // 적이 뽑고, 자기 격발 시각에 플레이어 쪽으로 쏜다 (쏘면 HandleEnemyFired 로 온다)
                 DrawSignaled?.Invoke();
 
                 // ③ 판정이 날 때까지 기다린다. 총을 쏘면 HandlePlayerFired / HandleEnemyFired 가 판정한다

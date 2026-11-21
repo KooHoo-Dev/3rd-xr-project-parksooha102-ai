@@ -2549,6 +2549,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 250a4b13ae3664c4385ad873c1ad7966, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.EnemyDuelist
+  gunEffects: {fileID: 5344204798446127608}
+  bodyTop: 0.1
+  bodyBottom: 0.7
+  bodyHalfWidth: 0.15
+  missSideOffset: {x: 0.35, y: 0.7}
+  missPassDistance: 15
 --- !u!1 &1968527401152822
 GameObject:
   m_ObjectHideFlags: 0
@@ -2983,6 +2989,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 146fe42f9096d804995e5ed51b7a8173, type: 3}
+--- !u!114 &5344204798446127608 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1931532262220393060, guid: 146fe42f9096d804995e5ed51b7a8173, type: 3}
+  m_PrefabInstance: {fileID: 5828858210106975132}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b61de7acaff2fe34f8aed53f6bc36b29, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.GunEffects
 --- !u!4 &5833592616319365650 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4879888146567566, guid: 146fe42f9096d804995e5ed51b7a8173, type: 3}
