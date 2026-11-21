@@ -7,7 +7,7 @@
 ## 1. 프로젝트
 
 - **정오의 결투** : Meta Quest 3 용 1:1 VR 서부 결투 게임. 정오 신호에 허리 홀스터에서 리볼버를 뽑아 적보다 먼저 맞힌다.
-- 무승부면 양쪽이 0.5m 씩 다가서고(거리 1m 감소) 다시 대치. 최대 5라운드 (5라운드는 적 명중률 100% 라 반드시 끝난다).
+- 무승부면 양쪽이 0.5m 씩 다가서고(거리 1m 감소) 다시 대치. 최대 6라운드 = 리볼버 6발 (마지막 6라운드는 적 명중률 100% 라 반드시 끝난다).
 - 1인 개발, 7일 일정, 학교 과제 (XRI 상호작용 2종 이상, 시작 → 플레이 → 끝, 점수 · 시간 · 승패 표시).
 - Unity 6 (6000.3), XR Interaction Toolkit 3.5.1, OpenXR, Android(IL2CPP) 빌드. 에셋은 Synty POLYGON 계열.
 - **기획서는 저장소 밖에 있다** : `C:\Users\VR9th\Downloads\박수하 — VR 컨셉 기획서.md` (2026-11-15). 게임 규칙 · 숫자는 기획서가 기준이다. 다른 PC 로 옮길 때 같이 챙길 것.
@@ -42,7 +42,7 @@ Assets/
     Table/       EnemyDef · EnemyTable (enemies.json 수동 파싱)
     Editor/      WantedPosterLayout (판 정렬 도구) · DuelAnimationBaker · XRSimulatorSceneSetup
     Tester/      ShotTester (개발용)
-  Resources/     Table/enemies.json (3 난이도 × 5 라운드) · Enemies/ · Props/
+  Resources/     Table/enemies.json (3 난이도 × 6 라운드) · Enemies/ · Props/
 ```
 
 ### 흐름
@@ -63,8 +63,20 @@ Assets/
 ### 판(UI) 만드는 법
 - 판은 손으로 만들지 않고 `WantedPosterLayout` 에디터 도구로 만든다. 숫자를 고치고 ⋮ 메뉴를 다시 누르는 방식.
   - Town `ResultBoard` ⋮ → **수배지 모양으로 정렬** / `RoundBoard` ⋮ → **쪽지 모양으로 정렬**
+    - 쪽지 정렬은 셋을 만든다 : 무승부 탄피 카드(나무 판 680 × 380 + 3D 틀 위에 핀으로 박은 쪽지, 실린더 6칸, 쏜 칸은 빔) · 홀스터 칸 아래 `HolsterGlow`(Unlit 덧칠 구, 총을 꽂을 때까지 깜빡) · AdvanceMarker 아래 `Sign`(나무 말뚝 + "한 걸음 앞으로" 3D 글자)
+    - RoundBoard 는 무승부만 띄운다 (승패 · 반칙 라운드는 쪽지 없이 결과판으로)
   - Title `MainMenu` ⋮ → **메인화면 판 정렬** : Panel 아래를 비우고 다섯 화면을 처음부터 다시 만든 뒤 칸 21개 + 컨트롤러 · 트리거를 자동 연결
 - Panel 은 `우클릭 > XR > UI Canvas` 로 직접 만들어 이름을 `Panel` 로 (레이로 누르는 Raycaster 때문).
+- 그림은 `WantedPosterArt` 가 정렬할 때마다 코드로 그려 `Assets/30.UI` 에 PNG 로 덮어쓴다 : 종이(Poster/Note/MenuPaper) · WoodSign(버튼) · Nail · BulletHole · StampFrame · `Montage_Easy/Normal/Hard/Coward`.
+  - 몽타주 원본은 `Assets/30.UI/MontageSource/MontageSource_{Easy,Normal,Hard}.png` (초록 배경 얼굴 스샷, 360×360, 얼굴 폭 40% · 눈 높이 위에서 45% 로 맞춰 자름). 정렬 때 초록을 빼고 판화풍으로 다시 그려 ResultBoard 의 Portrait 칸에 넣는다.
+  - 메인화면 = 나무 현상금 게시판 (판자 그림 1000 × 760, BountyBoard.png). 몸통은 3D : Panel 자식 큐브 BoardBack(뒤판) + FrameTop/Bottom/Left/Right(앞으로 2.8cm 튀어나온 틀, 폭 5cm). 재질 BoardFrame.mat · BoardBack.mat (URP Lit + WoodGrain.png), 충돌체 없음(레이 방해 방지). 맨 위 나무 간판 "정오의 결투".
+    - 첫 화면 : 작은 수배지 셋(쉬움 · 보통 · 어려움, 구경용) · 오른쪽 쪽지 버튼(결투 신청 / 홀스터 조정) · 아래 공고(결투 규칙)
+    - 게임 시작 화면 : 같은 수배지 셋이 곧 난이도 Toggle. 고르면 몽타주에 빨간 동그라미(CircleMark.png). 오른쪽 쪽지 결투 시작 / 뒤로
+    - 홀스터 · 빠른 조정 화면 : 게시판에 붙인 큰 종이(Sheet) 위에 기존 버튼들, 뒤로는 오른쪽 쪽지
+    - 종이마다 그림자(같은 그림 반투명 검정) + 핀(Nail.png 축소). 종이는 위쪽 가운데(핀 자리) 기준으로 조금씩 기울였다
+    - 지금 매칭 : Easy = 카우보이 모자 · 조끼 · 빨간 스카프 / Normal = 깃털 모자 · 판초 / Hard = 검은 모자 · 검은 수염.
+  - 결과판 = 나무 판(720 × 1180, ResultBoardPlanks.png + 3D 뒤판 · 틀, PlaceBoardModel 공용)에 수배지(Poster, 600 × 980)를 못으로 박은 모양. 수배지 내용은 모두 Poster 의 자식, 버튼 둘은 판 아래쪽(ButtonTop)에.
+  - 수배지 내용 : WANTED → DEAD OR ALIVE → 몽타주 → 이름(enemies.json `Name`) → 내역 → REWARD. 결과는 몽타주 위 빨간 도장(DEAD / AT LARGE / COWARD), 이기면 맞힌 부위에 총알 구멍. 반칙이면 실루엣 + "바로 당신".
 
 ## 4. 지금 상태 · 남은 일
 
