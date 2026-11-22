@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Game.Table;
 using TMPro;
 using UnityEngine;
@@ -9,8 +10,9 @@ using UnityEngine.UI;
 namespace Game
 {
     // 메인화면 (Title 씬). 난이도를 고르고 홀스터 자리를 맞춘 뒤, 결투 씬(Town)을 연다.
-    //   화면은 다섯 장이고, 한 번에 한 장만 켠다
-    //     첫 화면     : '게임 시작' · '홀스터 조정'
+    //   화면은 여섯 장이고, 한 번에 한 장만 켠다
+    //     첫 화면     : '게임 시작' · '홀스터 조정' · '음량 조절'
+    //     음량 조절   : 슬라이더 넷 (전체 · 배경음악 · 효과음 · 환경음) · '뒤로'. 슬라이더는 VolumeSlider 가 SoundManager 와 잇는다
     //     게임 시작   : 난이도 셋 · '뒤로' · '결투 시작'
     //     홀스터 조정 : 조정 버튼들 · '처음 자리' · '빠른 조정' · '뒤로'
     //     주 손 고르기 : '왼손잡이' · '오른손잡이' · '뒤로'        (빠른 조정 1단계)
@@ -36,6 +38,7 @@ namespace Game
         [SerializeField] private GameObject homePage;
         [SerializeField] private Button duelMenuButton;      // 게임 시작 → 게임 시작 화면
         [SerializeField] private Button holsterMenuButton;   // 홀스터 조정 → 홀스터 조정 화면
+        [SerializeField] private Button volumeMenuButton;    // 음량 조절 → 음량 조절 화면
 
         [Header("연결 - 게임 시작 화면")]
         [SerializeField] private GameObject duelPage;
@@ -66,6 +69,10 @@ namespace Game
         [SerializeField] private GameObject followPage;      // 손 따라가기
         [SerializeField] private TMP_Text followText;        // "오른손을 홀스터를 둘 자리에 대고 ..."
 
+        [Header("연결 - 음량 조절 화면")]
+        [SerializeField] private GameObject volumePage;      // 슬라이더는 VolumeSlider 가 알아서 하므로 여기서 다루지 않는다
+        [SerializeField] private Button volumeBackButton;    // 뒤로 → 첫 화면
+
         [Header("설정")]
         [SerializeField] private float step = 0.02f;         // 버튼 한 번에 홀스터를 옮기는 거리 (m). 0.02 = 2cm
 
@@ -78,6 +85,8 @@ namespace Game
         {
             duelMenuButton.onClick.AddListener(HandleDuelMenuClicked);
             holsterMenuButton.onClick.AddListener(HandleHolsterMenuClicked);
+            volumeMenuButton.onClick.AddListener(HandleVolumeMenuClicked);
+            volumeBackButton.onClick.AddListener(HandleBackClicked);
 
             startButton.onClick.AddListener(HandleStartClicked);
             duelBackButton.onClick.AddListener(HandleBackClicked);
@@ -101,6 +110,8 @@ namespace Game
         {
             duelMenuButton.onClick.RemoveListener(HandleDuelMenuClicked);
             holsterMenuButton.onClick.RemoveListener(HandleHolsterMenuClicked);
+            volumeMenuButton.onClick.RemoveListener(HandleVolumeMenuClicked);
+            volumeBackButton.onClick.RemoveListener(HandleBackClicked);
 
             startButton.onClick.RemoveListener(HandleStartClicked);
             duelBackButton.onClick.RemoveListener(HandleBackClicked);
@@ -131,7 +142,14 @@ namespace Game
 
             // ③ 플레이어를 이 자리에 세우고 판 쪽을 보게 한다
             //    PlayerPlacer 가 머리 추적이 잡힐 때까지 기다렸다가 세운다 (Town 의 StageManager 와 같은 방법)
-            StartCoroutine(playerPlacer.PlaceFirst(transform.position, transform.rotation));
+            StartCoroutine(PlaceAndFadeIn());
+        }
+
+        // 플레이어를 세운 다음 암전을 걷는다 (자리 잡는 모습이 안 보이게)
+        private IEnumerator PlaceAndFadeIn()
+        {
+            yield return playerPlacer.PlaceFirst(transform.position, transform.rotation);
+            ScreenFader.FadeIn();
         }
 
         private void Update()
@@ -161,6 +179,7 @@ namespace Game
             holsterPage.SetActive(page == holsterPage);
             handPage.SetActive(page == handPage);
             followPage.SetActive(page == followPage);
+            volumePage.SetActive(page == volumePage);
         }
 
         // '게임 시작' : 게임 시작 화면을 펼친다. 지금 난이도(처음엔 보통)가 골라진 채로 연다
@@ -178,7 +197,14 @@ namespace Game
             ShowPage(holsterPage);
         }
 
-        // '뒤로' : 첫 화면으로 (게임 시작 · 홀스터 조정 화면의 뒤로 버튼이 같이 쓴다)
+        // '음량 조절' : 음량 조절 화면을 펼친다. 슬라이더는 켜질 때 저장된 음량을 스스로 읽어 온다 (VolumeSlider.OnEnable)
+        private void HandleVolumeMenuClicked()
+        {
+            ShowPage(volumePage);
+        }
+
+        // '뒤로' : 첫 화면으로 (게임 시작 · 홀스터 조정 · 음량 조절 화면의 뒤로 버튼이 같이 쓴다)
+        //   음량 조절 화면을 닫으면 VolumeSlider.OnDisable 이 음량을 저장한다
         private void HandleBackClicked()
         {
             ShowPage(homePage);
@@ -191,7 +217,7 @@ namespace Game
         {
             GameSettings.Difficulty = GetSelectedDifficulty();
             Debug.Log($"[MainMenu] {GameSettings.Difficulty} 난이도로 결투 시작");
-            SceneManager.LoadScene(DuelSceneName);
+            ScreenFader.LoadScene(DuelSceneName);   // 암전한 뒤 연다
         }
 
         // 난이도 → 그 난이도의 Toggle
@@ -259,8 +285,12 @@ namespace Game
         //   x 는 + 면 오른쪽, - 면 왼쪽 (왼손잡이는 홀스터가 왼쪽 허리에 온다). z 도 같은 식으로 앞 / 뒤
         private void UpdateHolsterText()
         {
-            Vector3 offset = GameSettings.HolsterOffset;
+            holsterText.SetText(FormatHolsterOffset(GameSettings.HolsterOffset));
+        }
 
+        // 홀스터 자리 → "머리에서 아래 60cm · 오른쪽 20cm · 앞 6cm" (일시 정지 판의 홀스터 조정도 같이 쓴다)
+        public static string FormatHolsterOffset(Vector3 offset)
+        {
             string side;
             if (offset.x >= 0f)
                 side = $"오른쪽 {offset.x * 100f:0}cm";
@@ -273,7 +303,7 @@ namespace Game
             else
                 depth = $"뒤 {-offset.z * 100f:0}cm";
 
-            holsterText.SetText($"머리에서 아래 {-offset.y * 100f:0}cm · {side} · {depth}");
+            return $"머리에서 아래 {-offset.y * 100f:0}cm · {side} · {depth}";
         }
 
         // ---------------------------------------------------------------- 빠른 조정

@@ -39,8 +39,10 @@ namespace Game
         }
 
         // 홀스터에서 총이 빠졌다 → 구독자 모두에게 다시 알린다
+        //   일시 정지 중에 뽑은 것은 알리지 않는다 (대치 중이면 반칙이 되어 버린다). PauseMenu 가 총을 도로 꽂는다
         private void HandleHolsterDrawn()
         {
+            if (GamePause.IsPaused) return;
             PlayerDrew?.Invoke();
         }
 

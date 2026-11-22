@@ -1,5 +1,6 @@
 ﻿using System;
-using Game.Table;               // EnemyTable (몽타주를 찍을 적 프리팹 · 이름)
+using System.Linq;              // FirstOrDefault (일시 정지 판 : 씬의 다른 UISound 찾기)
+using Game.Table;              // EnemyTable (몽타주를 찍을 적 프리팹 · 이름)
 using TMPro;
 using Unity.XR.CoreUtils;       // XROrigin (메인화면 판 : 컨트롤러 찾기)
 using UnityEditor;
@@ -41,7 +42,8 @@ namespace Game.EditorTools
 
         // 무승부 뒤 할 일을 보여 주는 것들 (m)
         private const float HolsterGlowSize = 0.2f;    // 홀스터 빛 구 지름
-        private const float SignSideOffset = 0.55f;    // 전진 표식 가운데에서 팻말까지 (오른쪽)
+        private const float SignSideOffset = 0f;       // 전진 표식 가운데에서 팻말까지 (오른쪽 +)
+        private const float SignForwardOffset = 0.5f;  // 전진 표식 가운데에서 팻말까지 (앞 = 적 쪽 +). 씬에서 표식 바로 앞으로 옮겼다
         private const float SignPostHeight = 1.2f;     // 말뚝 높이
         private const float SignBoardY = 1.05f;        // 팻말 판 가운데 높이
         private const float SignBoardWidth = 0.5f;
@@ -52,11 +54,36 @@ namespace Game.EditorTools
         private const int PosterHeight = 290;
         private const int NoteButtonWidth = 230;   // 누르는 쪽지
         private const int NoteButtonHeight = 100;
-        private const int SheetWidth = 700;        // 홀스터 조정처럼 내용이 많은 화면을 담는 큰 종이
+        private const int SheetWidth = 700;        // 홀스터 조정처럼 내용이 많은 화면을 담는 큰 종이 (메인화면 : 오른쪽에 쪽지 줄이 있어서 왼쪽에 붙인다)
         private const int SheetHeight = 520;
         private const int SheetX = -110;
         private const int SheetTop = 205;
+
+        // 큰 종이 자리 · 크기. 종이 안의 내용(홀스터 조정 · 음량 조절)은 이 폭 · 높이에 맞춰 스스로 배치된다
+        private struct SheetBox
+        {
+            public float X, Top, Width, Height;
+            public SheetBox(float x, float top, float width, float height) { X = x; Top = top; Width = width; Height = height; }
+        }
+
+        private static readonly SheetBox MainSheet = new SheetBox(SheetX, SheetTop, SheetWidth, SheetHeight);
+        private static readonly SheetBox PauseSheet = new SheetBox(0, 160, 860, 470);   // 일시 정지 판 : 쪽지 줄이 없어서 가운데 넓게
+
+        // 일시 정지 판 자리
+        private const int PauseTitleTop = 36;      // 간판 윗변 (메인화면보다 조금 올려 종이 자리를 낸다)
+        private const int PauseBackTop = 650;      // 하위 화면 '뒤로' 쪽지 윗변 (종이 아래 가운데. 종이 끝 630)
+
+        // 글자 크기 단계. 판 · 종이 · 버튼 어디서나 이 다섯 단계만 쓴다
+        private const float TextTitle = 64f;       // 나무 간판
+        private const float TextHeading = 40f;     // 큰 종이 제목 (홀스터 위치 · 음량)
+        private const float TextButton = 34f;      // 버튼 글자 · 줄 이름표 · 음량 숫자
+        private const float TextBody = 30f;        // 종이 본문 (홀스터 자리 글자 등)
+        private const float TextHint = 24f;        // 종이 맨 아래 안내
         private const int RightColumnX = 350;      // 게시판 오른쪽 쪽지 줄의 가로 자리
+        private const int PauseButtonTop = 170;    // 일시 정지 첫 화면 : 간판 아래 첫 쪽지 버튼 윗변 (간판 36 ~ 140)
+        private const int PauseButtonGap = 130;    // 쪽지 버튼 사이 (버튼 110 + 틈 20) → 마지막 버튼 아래 끝 670
+        private const int PauseButtonWidth = 360;  // 판에 버튼만 있어서 크게
+        private const int PauseButtonHeight = 110;
 
         // 게시판 몸통 (3D 큐브, 캔버스 칸 = mm). Z 는 + 가 뒤(플레이어 반대쪽)
         private const float FrameWidth = 50f;      // 틀 막대 폭
@@ -69,11 +96,18 @@ namespace Game.EditorTools
         private static readonly float[] PosterX = { -330f, -110f, 110f };
         private static readonly float[] PosterTop = { 205f, 215f, 200f };
         private static readonly float[] PosterAngle = { -3f, 1.5f, -2f };
+        //    수배지 못 자리 (수배지 위쪽 가운데 기준 x, 위에서 아래로 top). 씬에서 손으로 박은 자리
+        private static readonly Vector2[] PosterPin = { new Vector2(2.3f, 11.5f), new Vector2(0.3f, 11.1f), new Vector2(2.2f, 14.1f) };
+
+        // 공고 (게시판 아래쪽 종이 한 장). 씬에서 손으로 맞춘 자리 · 크기
+        private const float NoticeX = 5f;
+        private const float NoticeTop = 543f;
+        private const int NoticeWidth = 750;
+        private const int NoticeHeight = 200;
 
         private const int RowHeight = 64;         // 홀스터 조정 줄 (이름표 | 버튼 | 버튼)
-        private const int RowLabelX = -215;        // 줄 안에서 가로 자리 (가운데가 0, 오른쪽이 +)
-        private const int RowLeftX = -10;
-        private const int RowRightX = 200;
+        private const float BeltWidthBase = 300f;  // 음량 탄띠 크기의 기준 폭 (칸). 이 폭일 때 쉘 20 × 46 · 탄띠 높이 40
+        private const float VolumeBeltMax = 440f;  // 음량 탄띠 최대 폭 (넓은 종이에서도 줄이 너무 커지지 않게)
 
         // 메인화면 판을 띄우는 자리 (m). MainMenu 오브젝트(= 플레이어가 설 바닥 자리) 기준
         private const float MenuDistance = 1.5f;   // 앞으로. 결과판처럼 손을 뻗지 않고 레이로 누르는 거리
@@ -178,9 +212,9 @@ namespace Game.EditorTools
             Image posterPaper = PlacePaper(panel, "Poster", paper, 0, PosterTopMargin, BoardWidth, PaperHeight, 0f);
             RectTransform poster = posterPaper.rectTransform;
 
-            //    종이를 벽에 박은 못 둘 (녹물이 아래로 흘렀다)
-            PlaceDecoration(poster, "NailLeft", nail, -256, 12, 40, 80);
-            PlaceDecoration(poster, "NailRight", nail, 256, 12, 40, 80);
+            //    종이를 벽에 박은 못 둘 (녹물이 아래로 흘렀다). 자리는 씬에서 손으로 박은 곳
+            PlaceDecoration(poster, "NailLeft", nail, -258.2f, 19.7f, 40, 80);
+            PlaceDecoration(poster, "NailRight", nail, 261f, 23.1f, 40, 80);
 
             //    맨 위 WANTED 는 바뀌지 않는다. 여기서 한 번 써 두면 끝이다
             TextMeshProUGUI title = GetText(poster, "Title");
@@ -274,8 +308,9 @@ namespace Game.EditorTools
 
             //    아래 버튼 둘을 나란히 : 왼쪽 메인으로, 오른쪽 다시 결투 (메인화면의 뒤로 · 결투 시작과 같은 줄 모양)
             //    메인화면 게시판과 같은 핀으로 박은 쪽지 버튼 (그림자 + 종이 + 핀, 조금씩 기울게)
-            Button mainMenuButton = PlaceNoteButton(panel, font, "MainMenuButton", notePaper, nail, "메인으로", InkBrown, -145, ButtonTop, NoteButtonWidth, NoteButtonHeight, -2f);
-            Button retryButton = PlaceNoteButton(panel, font, "RetryButton", notePaper, nail, "다시 결투", InkRed, 145, ButtonTop, NoteButtonWidth, NoteButtonHeight, 2f);
+            //    못 자리(뒤의 두 숫자)는 씬에서 손으로 박은 곳
+            Button mainMenuButton = PlaceNoteButton(panel, font, "MainMenuButton", notePaper, nail, "메인으로", InkBrown, -145, ButtonTop, NoteButtonWidth, NoteButtonHeight, -2f, -0.5f, 15.2f);
+            Button retryButton = PlaceNoteButton(panel, font, "RetryButton", notePaper, nail, "다시 결투", InkRed, 145, ButtonTop, NoteButtonWidth, NoteButtonHeight, 2f, 0f, 16.1f);
 
             // ⑤ ResultBoard 의 칸에 연결한다 (Inspector 칸에 끌어다 넣는 일을 코드로 한다)
             //    칸이 private 이라 board.resultText = stampLabel 로는 못 넣는다.
@@ -353,8 +388,8 @@ namespace Game.EditorTools
             //    → 자리는 쪽지 위쪽 가운데 기준. 만드는 순서 = 그리는 순서
             Image notePaper = PlacePaper(panel, "Note", paper, 0, NoteMargin, NoteWidth, NoteHeight, -1f);
             RectTransform note = notePaper.rectTransform;
-            PlaceDecoration(note, "PinLeft", nail, -250, -16, 24, 48);
-            PlaceDecoration(note, "PinRight", nail, 250, -16, 24, 48);
+            PlaceDecoration(note, "PinLeft", nail, -267.2f, 21f, 24, 48);   // 씬에서 손으로 박은 자리
+            PlaceDecoration(note, "PinRight", nail, 250f, 24.5f, 24, 48);
 
             //    맨 위 한 줄. 글자는 편집할 때 보이는 예시다. Play 하면 RoundBoard 가 결과로 바꾼다
             TextMeshProUGUI title = GetText(note, "Title");
@@ -458,12 +493,14 @@ namespace Game.EditorTools
             if (old != null)
                 Undo.DestroyObjectImmediate(old.gameObject);
 
-            // ① 팻말 묶음 : 표식 오른쪽 옆에 세운다. 표식이 납작한 원기둥이라 크기가 찌그러져 있을 수 있어서
+            // ① 팻말 묶음 : 표식 바로 앞(적 쪽)에 세운다. 표식이 납작한 원기둥이라 크기가 찌그러져 있을 수 있어서
             //    월드 크기를 1 로 맞춰 둔다 → 아래 자식들은 m 단위로 바로 적을 수 있다
             GameObject sign = new GameObject("Sign");
             Undo.RegisterCreatedObjectUndo(sign, UndoName);
             sign.transform.SetParent(marker.transform, false);
-            sign.transform.position = marker.transform.position + marker.transform.right * SignSideOffset;
+            sign.transform.position = marker.transform.position
+                                      + marker.transform.right * SignSideOffset
+                                      + marker.transform.forward * SignForwardOffset;
             sign.transform.rotation = marker.transform.rotation;
             SetWorldScale(sign.transform, Vector3.one);
 
@@ -569,7 +606,7 @@ namespace Game.EditorTools
         }
 
         // 결과판(Arrange)과 같은 순서다 : 재료 → Panel → 자식 → 칸 연결
-        //   다른 점 : 판 위의 것을 화면 다섯 장(첫 화면 / 게임 시작 / 홀스터 조정 / 주 손 고르기 / 손 따라가기)으로 나눠 담는다
+        //   다른 점 : 판 위의 것을 화면 여섯 장(첫 화면 / 게임 시작 / 홀스터 조정 / 주 손 고르기 / 손 따라가기 / 음량 조절)으로 나눠 담는다
         private static void ArrangeMenu(MainMenu menu)
         {
             if (EditorApplication.isPlaying)
@@ -583,11 +620,14 @@ namespace Game.EditorTools
             Sprite board = WantedPosterArt.CreateBoard("BountyBoard.png", MenuWidth, MenuHeight);
             Sprite posterPaper = WantedPosterArt.CreatePaper("BoardPoster.png", PosterWidth, PosterHeight, 12, 1);
             Sprite notePaper = WantedPosterArt.CreatePaper("BoardNote.png", NoteButtonWidth, NoteButtonHeight, 0, 0);
-            Sprite noticePaper = WantedPosterArt.CreatePaper("BoardNotice.png", 620, 150, 10, 0);
+            Sprite noticePaper = WantedPosterArt.CreatePaper("BoardNotice.png", NoticeWidth, NoticeHeight, 10, 0);
             Sprite sheetPaper = WantedPosterArt.CreatePaper("BoardSheet.png", SheetWidth, SheetHeight, 20, 1);
             woodSign = WantedPosterArt.CreateWoodSign("WoodSign.png");
             Sprite nail = WantedPosterArt.CreateNail("Nail.png");
             Sprite circleMark = WantedPosterArt.CreateCircleMark("CircleMark.png");
+            Sprite ammoBelt = WantedPosterArt.CreateAmmoBelt("AmmoBelt.png");            // 음량 조절 : 가죽 탄띠
+            Sprite shotgunShell = WantedPosterArt.CreateShotgunShell("ShotgunShell.png");   // 음량 조절 : 탄띠에 꽂는 쉘 (한 발 = 10%)
+            Sprite beltStrap = WantedPosterArt.CreateBeltStrap("BeltStrap.png");            // 음량 조절 : 쉘을 쥐는 가죽 고리 (늘 보인다)
 
             //    현상범 몽타주 · 이름 · 기본 점수 (결과판과 같은 그림, 같은 표)
             EnemyTable enemies = new EnemyTable();
@@ -646,15 +686,19 @@ namespace Game.EditorTools
             //    [첫 화면] 수배지 셋(구경만) · 쪽지 버튼 둘 · 아래 공고 · 회중시계
             RectTransform homePage = CreatePage(panel, "HomePage");
 
-            PlacePosterImage(homePage, font, "EasyPoster", posterPaper, nail, easyPortrait, enemies.Get(Difficulty.Easy), "쉬움", PosterX[0], PosterTop[0], PosterAngle[0]);
-            PlacePosterImage(homePage, font, "NormalPoster", posterPaper, nail, normalPortrait, enemies.Get(Difficulty.Normal), "보통", PosterX[1], PosterTop[1], PosterAngle[1]);
-            PlacePosterImage(homePage, font, "HardPoster", posterPaper, nail, hardPortrait, enemies.Get(Difficulty.Hard), "어려움", PosterX[2], PosterTop[2], PosterAngle[2]);
+            PlacePosterImage(homePage, font, "EasyPoster", posterPaper, nail, easyPortrait, enemies.Get(Difficulty.Easy), 0);
+            PlacePosterImage(homePage, font, "NormalPoster", posterPaper, nail, normalPortrait, enemies.Get(Difficulty.Normal), 1);
+            PlacePosterImage(homePage, font, "HardPoster", posterPaper, nail, hardPortrait, enemies.Get(Difficulty.Hard), 2);
 
-            Button duelMenuButton = PlaceNoteButton(homePage, font, "DuelMenuButton", notePaper, nail, "결투 신청", InkRed, RightColumnX, 215, NoteButtonWidth, NoteButtonHeight, 2f);
-            Button holsterMenuButton = PlaceNoteButton(homePage, font, "HolsterMenuButton", notePaper, nail, "홀스터 조정", InkBrown, RightColumnX, 345, NoteButtonWidth, NoteButtonHeight, -2f);
+            //    쪽지 못 자리(뒤의 두 숫자)는 씬에서 손으로 박은 자리다. 쪽지마다 조금씩 다르다
+            Button duelMenuButton = PlaceNoteButton(homePage, font, "DuelMenuButton", notePaper, nail, "결투 신청", InkRed, RightColumnX, 215, NoteButtonWidth, NoteButtonHeight, 2f, 1.2f, 12.1f);
+            Button holsterMenuButton = PlaceNoteButton(homePage, font, "HolsterMenuButton", notePaper, nail, "홀스터 조정", InkBrown, RightColumnX, 345, NoteButtonWidth, NoteButtonHeight, -2f, -0.3f, 14.1f);
+            Button volumeMenuButton = PlaceNoteButton(homePage, font, "VolumeMenuButton", notePaper, nail, "음량 조절", InkBrown, 342, 437, NoteButtonWidth, NoteButtonHeight, 2f, 1.5f, 10.5f);   // 씬에서 손으로 맞춘 자리 · 크기
+            volumeMenuButton.GetComponentInChildren<TextMeshProUGUI>().fontSize = 32;
 
             PlaceNotice(homePage, font, "Notice", noticePaper, nail,
-                "<size=120%><b>공  고</b></size>\n수배자를 쓰러뜨린 자에게 현상금 지급\n단, 정오의 종보다 먼저 총을 뽑은 자는 겁쟁이로 수배\n<size=80%>— 보안관 사무소</size>");
+                "<size=120%><b>공  고</b></size>\n수배자를 쓰러뜨린 자에게 현상금을 지급함\n단, 정오의 종보다 먼저 총을 뽑은 자 또한 무법자로 수배되니 주의할 것\n<size=80%>— 보안관 사무소</size>",
+                new Vector2(-331f, 85f), new Vector2(323f, 88f));
 
             //    [게임 시작 화면] 수배지 셋이 곧 난이도 Toggle 이다 → 잡을 현상범을 고르면 빨간 동그라미가 쳐진다
             RectTransform duelPage = CreatePage(panel, "DuelPage");
@@ -667,9 +711,9 @@ namespace Game.EditorTools
             ToggleGroup group = Undo.AddComponent<ToggleGroup>(groupObject);   // 방금 만든 빈 오브젝트라 붙어 있는 것이 없다
             group.allowSwitchOff = false;        // 셋 다 꺼질 수 없게 (늘 하나는 골라져 있다)
 
-            Toggle easyToggle = PlacePosterToggle(groupRect, group, font, "EasyToggle", posterPaper, nail, circleMark, easyPortrait, enemies.Get(Difficulty.Easy), "쉬움", 0);
-            Toggle normalToggle = PlacePosterToggle(groupRect, group, font, "NormalToggle", posterPaper, nail, circleMark, normalPortrait, enemies.Get(Difficulty.Normal), "보통", 1);
-            Toggle hardToggle = PlacePosterToggle(groupRect, group, font, "HardToggle", posterPaper, nail, circleMark, hardPortrait, enemies.Get(Difficulty.Hard), "어려움", 2);
+            Toggle easyToggle = PlacePosterToggle(groupRect, group, font, "EasyToggle", posterPaper, nail, circleMark, easyPortrait, enemies.Get(Difficulty.Easy), 0);
+            Toggle normalToggle = PlacePosterToggle(groupRect, group, font, "NormalToggle", posterPaper, nail, circleMark, normalPortrait, enemies.Get(Difficulty.Normal), 1);
+            Toggle hardToggle = PlacePosterToggle(groupRect, group, font, "HardToggle", posterPaper, nail, circleMark, hardPortrait, enemies.Get(Difficulty.Hard), 2);
 
             //    편집할 때는 보통이 골라져 있게 한다 (Play 하면 MainMenu 가 지금 난이도로 다시 고른다)
             //    보통을 먼저 켜야 한다. 하나도 안 켜진 채로 끄려고 하면 Toggle Group 이 못 끄게 막는다
@@ -678,17 +722,18 @@ namespace Game.EditorTools
             hardToggle.isOn = false;
 
             Image pickNote = PlacePaper(duelPage, "PickNote", notePaper, RightColumnX, 210, NoteButtonWidth, 110, -1f);
-            PlaceDecoration(pickNote.rectTransform, "Pin", nail, 0, -16, 24, 48);
+            PlaceDecoration(pickNote.rectTransform, "Pin", nail, 2.6f, 8.8f, 24, 48);
             TextMeshProUGUI pickText = GetText(pickNote.rectTransform, "Text");
             Stretch(pickText.rectTransform);
-            SetText(pickText, font, "잡을 현상범의\n수배지를 고르세요", 26, InkBrown, FontStyles.Bold);
+            SetText(pickText, font, "잡을 현상범의\n수배지를 고르세요", 22, InkBrown, FontStyles.Bold);
             pickText.lineSpacing = 6;
 
-            Button startButton = PlaceNoteButton(duelPage, font, "StartButton", notePaper, nail, "결투 시작", InkRed, RightColumnX, 350, NoteButtonWidth, NoteButtonHeight, 2f);
-            Button duelBackButton = PlaceNoteButton(duelPage, font, "DuelBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 475, 190, 84, -2f);
+            Button startButton = PlaceNoteButton(duelPage, font, "StartButton", notePaper, nail, "결투 시작", InkRed, RightColumnX, 350, NoteButtonWidth, NoteButtonHeight, 2f, -1.9f, 15.3f);
+            Button duelBackButton = PlaceNoteButton(duelPage, font, "DuelBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 475, 190, 84, -2f, 2.4f, 10.5f);
 
             PlaceNotice(duelPage, font, "Notice", noticePaper, nail,
-                "<size=120%><b>포상 안내</b></size>\n빠른 손 · 머리 명중 · 빠른 결판에는 추가 포상\n<size=80%>— 보안관 사무소</size>");
+                "<size=120%><b>포상 안내</b></size>\n빠른 손 · 머리 명중 · 빠른 결판에는 추가 포상\n<size=80%>— 보안관 사무소</size>",
+                new Vector2(-325.9f, 89.3f), new Vector2(321.2f, 91f));
 
 
             //    [홀스터 조정 화면] 게시판에 붙인 큰 종이 한 장(Sheet) 위에 조정 버튼들. 뒤로는 오른쪽 쪽지
@@ -696,91 +741,25 @@ namespace Game.EditorTools
             //    좌우는 '왼쪽 · 오른쪽' 이다. 왼손잡이는 홀스터가 왼쪽 허리라서 '안쪽 · 바깥쪽' 이 손마다 반대가 된다
             //    Sheet 안의 자리는 Sheet 위쪽 가운데 기준이다
             RectTransform holsterPage = CreatePage(panel, "HolsterPage");
-            RectTransform holsterSheet = PlaceSheet(holsterPage, "Sheet", sheetPaper, nail);
+            HolsterSheet holster = PlaceHolsterSheet(holsterPage, font, sheetPaper, nail, true, MainSheet);
 
-            TextMeshProUGUI holsterLabel = GetText(holsterSheet, "HolsterLabel");
-            PlaceFromTop(holsterLabel.rectTransform, 36, 600, 50);
-            SetText(holsterLabel, font, "홀스터 위치", 38, InkRed, FontStyles.Bold);
+            Button holsterBackButton = PlaceNoteButton(holsterPage, font, "HolsterBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 610, 190, 84, -2f, 0.3f, 8.6f);
 
-            //    글자는 편집할 때 보이는 예시다. Play 하면 MainMenu 가 저장된 자리로 바꾼다
-            TextMeshProUGUI holsterText = GetText(holsterSheet, "HolsterText");
-            PlaceFromTop(holsterText.rectTransform, 90, 600, 40);
-            SetText(holsterText, font, "머리에서 아래 60cm · 오른쪽 20cm · 앞 6cm", 28, InkBrown, FontStyles.Normal);
-            holsterText.enableAutoSizing = true;   // 숫자가 길어지면 칸에 맞게 줄인다 (SetText 가 끄므로 그 뒤에 켠다)
-            holsterText.fontSizeMin = 20;
-            holsterText.fontSizeMax = 28;
+            //    [주 손 고르기] · [손 따라가기] : 빠른 조정 1 · 2단계 (일시 정지 판과 같은 종이)
+            QuickPages quick = PlaceQuickPages(panel, font, sheetPaper, nail, MainSheet);
+            RectTransform handPage = quick.HandPage;
+            RectTransform followPage = quick.FollowPage;
+            Button leftHandButton = quick.LeftHand;
+            Button rightHandButton = quick.RightHand;
+            TextMeshProUGUI followText = quick.FollowText;
+            Button handBackButton = PlaceNoteButton(handPage, font, "HandBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 610, 190, 84, -2f, 0.3f, 8.6f);   // 홀스터 조정의 뒤로와 같은 자리
 
-            PlaceRowLabel(holsterSheet, font, "HeightLabel", "높이", 142);
-            Button upButton = PlaceRowButton(holsterSheet, font, "UpButton", "위쪽", RowLeftX, 142);
-            Button downButton = PlaceRowButton(holsterSheet, font, "DownButton", "아래쪽", RowRightX, 142);
+            //    [음량 조절 화면] 홀스터 조정처럼 큰 종이 한 장 위에 줄 넷 (이름표 | 슬라이더 | %). 뒤로는 오른쪽 쪽지
+            //    슬라이더 = 가죽 탄띠. 음량만큼 샷건 쉘이 꽂힌다 (10발 = 100%)
+            RectTransform volumePage = CreatePage(panel, "VolumePage");
+            PlaceVolumeSheet(volumePage, font, sheetPaper, nail, ammoBelt, shotgunShell, beltStrap, MainSheet);
 
-            PlaceRowLabel(holsterSheet, font, "DepthLabel", "앞뒤", 218);
-            Button forwardButton = PlaceRowButton(holsterSheet, font, "ForwardButton", "앞쪽", RowLeftX, 218);
-            Button backwardButton = PlaceRowButton(holsterSheet, font, "BackwardButton", "뒤쪽", RowRightX, 218);
-
-            PlaceRowLabel(holsterSheet, font, "SideLabel", "좌우", 294);
-            Button leftButton = PlaceRowButton(holsterSheet, font, "LeftButton", "왼쪽", RowLeftX, 294);
-            Button rightButton = PlaceRowButton(holsterSheet, font, "RightButton", "오른쪽", RowRightX, 294);
-
-            Button resetButton = GetButton(holsterSheet, "ResetButton");
-            PlaceFromTopAt((RectTransform)resetButton.transform, -130, 374, 240, 60);
-            ArrangeButton(resetButton, font, "처음 자리", 32);
-
-            Button quickButton = GetButton(holsterSheet, "QuickButton");
-            PlaceFromTopAt((RectTransform)quickButton.transform, 130, 374, 240, 60);
-            ArrangeButton(quickButton, font, "빠른 조정", 32);
-
-            TextMeshProUGUI holsterHint = GetText(holsterSheet, "HolsterHint");
-            PlaceFromTop(holsterHint.rectTransform, 450, 600, 36);
-            SetText(holsterHint, font, "버튼을 누르면 총이 홀스터로 돌아옵니다. 뽑아 보며 맞추세요", 22, InkBrown, FontStyles.Normal);
-
-            Button holsterBackButton = PlaceNoteButton(holsterPage, font, "HolsterBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 610, 190, 84, -2f);
-
-            //    [주 손 고르기 화면] 빠른 조정 1단계
-            RectTransform handPage = CreatePage(panel, "HandPage");
-            RectTransform handSheet = PlaceSheet(handPage, "Sheet", sheetPaper, nail);
-
-            TextMeshProUGUI handLabel = GetText(handSheet, "HandLabel");
-            PlaceFromTop(handLabel.rectTransform, 36, 600, 50);
-            SetText(handLabel, font, "빠른 조정", 38, InkRed, FontStyles.Bold);
-
-            TextMeshProUGUI handText = GetText(handSheet, "HandText");
-            PlaceFromTop(handText.rectTransform, 110, 600, 90);
-            SetText(handText, font, "주로 쓰는 손을 고르세요\n홀스터가 그 손을 따라갑니다", 30, InkBrown, FontStyles.Normal);
-            handText.lineSpacing = 10;
-
-            Button leftHandButton = GetButton(handSheet, "LeftHandButton");
-            PlaceFromTopAt((RectTransform)leftHandButton.transform, -150, 250, 260, 110);
-            ArrangeButton(leftHandButton, font, "왼손잡이", 44);
-
-            Button rightHandButton = GetButton(handSheet, "RightHandButton");
-            PlaceFromTopAt((RectTransform)rightHandButton.transform, 150, 250, 260, 110);
-            ArrangeButton(rightHandButton, font, "오른손잡이", 44);
-
-            Button handBackButton = PlaceNoteButton(handPage, font, "HandBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 610, 190, 84, -2f);
-
-            //    [손 따라가기 화면] 빠른 조정 2단계. 버튼 없이 안내 글자만 둔다
-            //    여기에 버튼(취소 등)을 두면, 주 손으로 그 버튼을 누르려는 트리거가 확정이 되어 버린다
-            RectTransform followPage = CreatePage(panel, "FollowPage");
-            RectTransform followSheet = PlaceSheet(followPage, "Sheet", sheetPaper, nail);
-
-            TextMeshProUGUI followLabel = GetText(followSheet, "FollowLabel");
-            PlaceFromTop(followLabel.rectTransform, 36, 600, 50);
-            SetText(followLabel, font, "빠른 조정", 38, InkRed, FontStyles.Bold);
-
-            //    글자는 편집할 때 보이는 예시다. Play 하면 MainMenu 가 고른 손에 맞게 바꾼다
-            TextMeshProUGUI followText = GetText(followSheet, "FollowText");
-            PlaceFromTop(followText.rectTransform, 120, 600, 160);
-            SetText(followText, font, "오른손을 홀스터를 둘 자리에 대고\n오른손 트리거를 누르세요", 40, InkRed, FontStyles.Bold);
-            followText.lineSpacing = 20;
-            followText.enableAutoSizing = true;   // 한 줄이 칸보다 길면 줄인다 (SetText 가 끄므로 그 뒤에 켠다)
-            followText.fontSizeMin = 28;
-            followText.fontSizeMax = 40;
-
-            TextMeshProUGUI followHint = GetText(followSheet, "FollowHint");
-            PlaceFromTop(followHint.rectTransform, 320, 600, 80);
-            SetText(followHint, font, "홀스터가 손을 따라옵니다\n확정한 뒤 버튼으로 더 다듬을 수 있습니다", 26, InkBrown, FontStyles.Normal);
-            followHint.lineSpacing = 10;
+            Button volumeBackButton = PlaceNoteButton(volumePage, font, "VolumeBackButton", notePaper, nail, "뒤로", InkBrown, RightColumnX, 610, 190, 84, -2f, 0.3f, 8.6f);   // 홀스터 조정의 뒤로와 같은 자리
 
 
             //    편집할 때는 첫 화면만 보이게 한다 (Play 하면 MainMenu 가 어차피 첫 화면부터 연다)
@@ -790,6 +769,7 @@ namespace Game.EditorTools
             holsterPage.gameObject.SetActive(false);
             handPage.gameObject.SetActive(false);
             followPage.gameObject.SetActive(false);
+            volumePage.gameObject.SetActive(false);
 
             // ⑤ MainMenu 의 칸에 연결한다
             //    PlayerPlacer · HolsterAnchor 는 씬에 하나씩만 있어서 찾아서 넣는다 (Town 을 복제한 씬이면 XR Origin 에 붙어 있다)
@@ -835,15 +815,8 @@ namespace Game.EditorTools
             SetField(menuData, "duelBackButton", duelBackButton);
 
             SetField(menuData, "holsterPage", holsterPage.gameObject);
-            SetField(menuData, "holsterText", holsterText);
-            SetField(menuData, "upButton", upButton);
-            SetField(menuData, "downButton", downButton);
-            SetField(menuData, "forwardButton", forwardButton);
-            SetField(menuData, "backwardButton", backwardButton);
-            SetField(menuData, "leftButton", leftButton);
-            SetField(menuData, "rightButton", rightButton);
-            SetField(menuData, "resetButton", resetButton);
-            SetField(menuData, "quickButton", quickButton);
+            SetHolsterFields(menuData, holster);
+            SetField(menuData, "quickButton", holster.Quick);
             SetField(menuData, "holsterBackButton", holsterBackButton);
 
             SetField(menuData, "handPage", handPage.gameObject);
@@ -852,10 +825,180 @@ namespace Game.EditorTools
             SetField(menuData, "handBackButton", handBackButton);
             SetField(menuData, "followPage", followPage.gameObject);
             SetField(menuData, "followText", followText);
+
+            SetField(menuData, "volumeMenuButton", volumeMenuButton);
+            SetField(menuData, "volumePage", volumePage.gameObject);
+            SetField(menuData, "volumeBackButton", volumeBackButton);
             menuData.ApplyModifiedProperties();
 
             EditorSceneManager.MarkSceneDirty(menu.gameObject.scene);
             Debug.Log("[WantedPosterLayout] 메인화면 판을 정렬했습니다. Ctrl+S 로 씬을 저장해 주세요.");
+        }
+
+        // ---------------------------------------------------------------- 일시 정지 판 (PauseMenu, Town 씬)
+
+        [MenuItem("CONTEXT/PauseMenu/일시 정지 판 정렬")]
+        private static void ArrangePauseFromContext(MenuCommand command)
+        {
+            ArrangePause((PauseMenu)command.context);
+        }
+
+        // 메인화면 판(ArrangeMenu)과 같은 게시판 · 종이 · 쪽지로 만든다. 순서도 같다 : 재료 → Panel → 자식 → 칸 연결
+        //   화면 다섯 장 : 첫 화면(간판 '일시 정지' + 아래 쪽지 버튼 넷) / 홀스터 조정 / 주 손 고르기 / 손 따라가기 / 음량 조절
+        //   PauseMenu 오브젝트는 멈출 때 머리 앞으로 옮겨진다 → Panel 은 그 자리 바로(눈높이 10cm 아래)에 둔다
+        private static void ArrangePause(PauseMenu menu)
+        {
+            if (EditorApplication.isPlaying)
+                throw new Exception("[WantedPosterLayout] Play 를 멈춘 뒤에 눌러 주세요. Play 중에 바꾼 것은 멈추면 사라집니다.");
+
+            Undo.RegisterFullObjectHierarchyUndo(menu.gameObject, UndoName);
+
+            // ① 재료 (메인화면 판과 같은 그림 파일을 다시 그려 쓴다)
+            TMP_FontAsset font = LoadFont();
+            Sprite board = WantedPosterArt.CreateBoard("BountyBoard.png", MenuWidth, MenuHeight);
+            Sprite notePaper = WantedPosterArt.CreatePaper("BoardNote.png", NoteButtonWidth, NoteButtonHeight, 0, 0);
+            Sprite sheetPaper = WantedPosterArt.CreatePaper("PauseSheet.png", (int)PauseSheet.Width, (int)PauseSheet.Height, 20, 1);   // 일시 정지 판 종이는 크기가 달라 따로 그린다
+            Sprite pauseNote = WantedPosterArt.CreatePaper("PauseNote.png", PauseButtonWidth, PauseButtonHeight, 0, 0);           // 첫 화면 큰 쪽지 (작은 쪽지를 늘리면 테두리가 찌그러진다)
+            woodSign = WantedPosterArt.CreateWoodSign("WoodSign.png");
+            Sprite nail = WantedPosterArt.CreateNail("Nail.png");
+            Sprite ammoBelt = WantedPosterArt.CreateAmmoBelt("AmmoBelt.png");
+            Sprite shotgunShell = WantedPosterArt.CreateShotgunShell("ShotgunShell.png");
+            Sprite beltStrap = WantedPosterArt.CreateBeltStrap("BeltStrap.png");
+
+            // ② Panel (캔버스). 버튼을 레이로 눌러야 해서 XR > UI Canvas 로 직접 만들게 한다
+            Transform panelTransform = menu.transform.Find("Panel");
+            if (panelTransform == null)
+                throw new Exception("[WantedPosterLayout] PauseMenu 아래에 Panel 이 없습니다. PauseMenu 우클릭 > XR > UI Canvas 로 만들고 이름을 Panel 로 바꿔 주세요.");
+
+            RectTransform panel = (RectTransform)panelTransform;
+            panel.localPosition = new Vector3(0f, -0.1f, 0f);         // 눈높이보다 10cm 아래 (m). 결과판과 같다
+            panel.localRotation = Quaternion.identity;                 // 플레이어와 같은 쪽을 본다 → 앞면이 보인다
+            panel.localScale = new Vector3(0.001f, 0.001f, 0.001f);    // 캔버스 1칸 = 1mm
+            panel.sizeDelta = new Vector2(MenuWidth, MenuHeight);
+
+            for (int i = panel.childCount - 1; i >= 0; i--)
+                Undo.DestroyObjectImmediate(panel.GetChild(i).gameObject);
+
+            // ③ 나무 게시판 + 맨 위 간판
+            Image background = GetImage(panel, "Background");
+            PlaceFromTop(background.rectTransform, 0, MenuWidth, MenuHeight);
+            background.sprite = board;
+            background.type = Image.Type.Simple;
+            background.color = Color.white;
+            background.raycastTarget = true;     // 레이가 게시판에 닿아 멈추게
+            PlaceBoardModel(panel, MenuWidth, MenuHeight);
+
+            PlaceShadow(panel, "TitleSignShadow", woodSign, 0, PauseTitleTop, 540, 104, 0f);
+            Image titleSign = GetImage(panel, "TitleSign");
+            PlaceFromTop(titleSign.rectTransform, PauseTitleTop, 540, 104);
+            titleSign.sprite = woodSign;
+            titleSign.type = Image.Type.Sliced;
+            titleSign.color = Color.white;
+            titleSign.raycastTarget = false;
+            TextMeshProUGUI title = GetText(titleSign.rectTransform, "Title");
+            Stretch(title.rectTransform);
+            SetText(title, font, "일시 정지", TextTitle, ButtonTextColor, FontStyles.Bold);
+            title.characterSpacing = 8;
+
+            // ④ [첫 화면] 간판 아래 가운데에 쪽지 버튼 넷을 세로로. 손으로 박은 것처럼 기울기 · 못 자리를 조금씩 다르게
+            //    판에 버튼만 있어서 크게 (360 × 110, 글자는 종이 제목 크기)
+            RectTransform homePage = CreatePage(panel, "HomePage");
+            Button resumeButton = PlacePauseButton(homePage, font, pauseNote, nail, "ResumeButton", "계속", InkRed, 0, 1.5f, new Vector2(1.2f, 12.1f));
+            Button holsterMenuButton = PlacePauseButton(homePage, font, pauseNote, nail, "HolsterMenuButton", "홀스터 조정", InkBrown, 1, -1.5f, new Vector2(-0.3f, 14.1f));
+            Button volumeMenuButton = PlacePauseButton(homePage, font, pauseNote, nail, "VolumeMenuButton", "음량 조절", InkBrown, 2, 1f, new Vector2(1.5f, 10.5f));
+            Button mainMenuButton = PlacePauseButton(homePage, font, pauseNote, nail, "MainMenuButton", "메인으로", InkBrown, 3, -1f, new Vector2(2.4f, 10.5f));
+
+            // ⑤ [홀스터 조정] · [음량 조절] : 판 가운데 넓은 종이(PauseSheet) + 그 아래 가운데 '뒤로' 쪽지
+            //    (메인화면은 오른쪽에 쪽지 줄이 있어서 종이를 왼쪽에 붙이지만, 이 판은 쪽지 줄이 없다)
+            RectTransform holsterPage = CreatePage(panel, "HolsterPage");
+            HolsterSheet holster = PlaceHolsterSheet(holsterPage, font, sheetPaper, nail, true, PauseSheet);
+            Button holsterBackButton = PlacePauseBackButton(holsterPage, font, notePaper, nail, "HolsterBackButton");
+
+            //    빠른 조정 1 · 2단계 (메인화면과 같은 화면). 손 따라가기에는 버튼을 두지 않는다 (트리거가 확정이라서)
+            QuickPages quick = PlaceQuickPages(panel, font, sheetPaper, nail, PauseSheet);
+            Button handBackButton = PlacePauseBackButton(quick.HandPage, font, notePaper, nail, "HandBackButton");
+
+            RectTransform volumePage = CreatePage(panel, "VolumePage");
+            PlaceVolumeSheet(volumePage, font, sheetPaper, nail, ammoBelt, shotgunShell, beltStrap, PauseSheet);
+            Button volumeBackButton = PlacePauseBackButton(volumePage, font, notePaper, nail, "VolumeBackButton");
+
+            holsterPage.gameObject.SetActive(false);
+            volumePage.gameObject.SetActive(false);
+
+            // ⑥ 버튼 소리 : Panel 에 UISound 가 없으면 붙이고, 씬의 다른 UISound(결과판 등)와 같은 클립을 꽂는다
+            if (panel.GetComponent<UISound>() == null)
+            {
+                UISound uiSound = Undo.AddComponent<UISound>(panel.gameObject);
+                UISound source = Object.FindObjectsByType<UISound>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                    .FirstOrDefault(other => other != uiSound);
+                if (source != null)
+                    EditorUtility.CopySerialized(source, uiSound);
+                else
+                    Debug.Log("[WantedPosterLayout] 씬에 다른 UISound 가 없어서 버튼 소리 클립을 비워 둡니다. Panel 의 UISound 에 클립을 꽂아 주세요.");
+            }
+
+            // ⑦ PauseMenu 의 칸에 연결한다
+            XROrigin origin = Object.FindFirstObjectByType<XROrigin>();
+            if (origin == null || origin.Camera == null)
+                throw new Exception("[WantedPosterLayout] 씬에 XR Origin(카메라 포함)이 없습니다.");
+
+            HolsterAnchor anchor = Object.FindFirstObjectByType<HolsterAnchor>();
+            if (anchor == null)
+                throw new Exception("[WantedPosterLayout] 씬에 HolsterAnchor 가 없습니다.");
+
+            SerializedObject menuData = new SerializedObject(menu);
+            SetField(menuData, "head", origin.Camera.transform);
+            SetField(menuData, "holsterAnchor", anchor);
+            SetField(menuData, "panel", panel.gameObject);
+
+            SetField(menuData, "homePage", homePage.gameObject);
+            SetField(menuData, "resumeButton", resumeButton);
+            SetField(menuData, "holsterMenuButton", holsterMenuButton);
+            SetField(menuData, "volumeMenuButton", volumeMenuButton);
+            SetField(menuData, "mainMenuButton", mainMenuButton);
+
+            SetField(menuData, "holsterPage", holsterPage.gameObject);
+            SetHolsterFields(menuData, holster);
+            SetField(menuData, "quickButton", holster.Quick);
+            SetField(menuData, "holsterBackButton", holsterBackButton);
+
+            SetField(menuData, "handPage", quick.HandPage.gameObject);
+            SetField(menuData, "leftHandButton", quick.LeftHand);
+            SetField(menuData, "rightHandButton", quick.RightHand);
+            SetField(menuData, "handBackButton", handBackButton);
+            SetField(menuData, "followPage", quick.FollowPage.gameObject);
+            SetField(menuData, "followText", quick.FollowText);
+
+            //    빠른 조정 : 컨트롤러 (XR Origin → Camera Offset 아래) · 트리거 (XRI 입력 파일의 Activate). 메인화면 판과 같다
+            Transform cameraOffset = origin.CameraFloorOffsetObject.transform;
+            SetField(menuData, "leftController", FindController(cameraOffset, "Left Controller"));
+            SetField(menuData, "rightController", FindController(cameraOffset, "Right Controller"));
+            SetField(menuData, "leftTrigger", LoadInputAction("XRI Left Interaction", "Activate"));
+            SetField(menuData, "rightTrigger", LoadInputAction("XRI Right Interaction", "Activate"));
+
+            SetField(menuData, "volumePage", volumePage.gameObject);
+            SetField(menuData, "volumeBackButton", volumeBackButton);
+            menuData.ApplyModifiedProperties();
+
+            EditorSceneManager.MarkSceneDirty(menu.gameObject.scene);
+            Debug.Log("[WantedPosterLayout] 일시 정지 판을 정렬했습니다. Ctrl+S 로 씬을 저장해 주세요.");
+        }
+
+        // 일시 정지 첫 화면 쪽지 버튼. index : 위에서 몇 번째 (0 부터)
+        private static Button PlacePauseButton(RectTransform page, TMP_FontAsset font, Sprite notePaper, Sprite nail, string name, string content, Color textColor, int index, float angle, Vector2 pin)
+        {
+            Button button = PlaceNoteButton(page, font, name, notePaper, nail, content, textColor,
+                0, PauseButtonTop + PauseButtonGap * index, PauseButtonWidth, PauseButtonHeight, angle, pin.x, pin.y);
+            button.GetComponentInChildren<TextMeshProUGUI>().fontSize = TextHeading;
+            return button;
+        }
+
+        // 일시 정지 하위 화면(홀스터 조정 · 음량 조절)의 '뒤로' 쪽지 : 종이 아래 가운데
+        private static Button PlacePauseBackButton(RectTransform page, TMP_FontAsset font, Sprite notePaper, Sprite nail, string name)
+        {
+            Button button = PlaceNoteButton(page, font, name, notePaper, nail, "뒤로", InkBrown, 0, PauseBackTop, 240, 84, -1.5f, 0.3f, 8.6f);
+            button.GetComponentInChildren<TextMeshProUGUI>().fontSize = TextButton;
+            return button;
         }
 
         // cameraOffset 바로 아래에서 name 인 컨트롤러를 찾는다. 없으면 바로 멈춘다
@@ -1015,9 +1158,11 @@ namespace Game.EditorTools
             return paper;
         }
 
-        // 작은 수배지 안 : WANTED · 몽타주 · 이름 · 현상금 · 난이도 · 맨 위 핀. 자리는 수배지 위쪽 가운데 기준
+        // 작은 수배지 안 : WANTED · 몽타주 · 이름 · 현상금 · 핀. 자리는 수배지 위쪽 가운데 기준
         //   구경용 수배지(첫 화면)와 고르는 수배지(Toggle)가 같이 쓴다
-        private static void FillPoster(RectTransform poster, TMP_FontAsset font, Sprite nail, Sprite portrait, EnemyDef enemy, string difficultyName)
+        //   (난이도 줄은 씬에서 지웠다. 수배지에 "난이도" 는 게임 말이라 어울리지 않는다)
+        //   index : 0 쉬움, 1 보통, 2 어려움 → PosterPin 의 칸
+        private static void FillPoster(RectTransform poster, TMP_FontAsset font, Sprite nail, Sprite portrait, EnemyDef enemy, int index)
         {
             TextMeshProUGUI wanted = GetText(poster, "Wanted");
             PlaceFromTop(wanted.rectTransform, 24, 170, 36);
@@ -1045,23 +1190,20 @@ namespace Game.EditorTools
             PlaceFromTop(reward.rectTransform, 226, 170, 24);
             SetText(reward, font, $"$ {enemy.BaseScore:N0}", 22, InkBrown, FontStyles.Bold);
 
-            TextMeshProUGUI difficulty = GetText(poster, "Difficulty");
-            PlaceFromTop(difficulty.rectTransform, 250, 170, 18);
-            SetText(difficulty, font, $"난이도 · {difficultyName}", 16, InkBrown, FontStyles.Normal);
-
-            PlaceDecoration(poster, "Pin", nail, 0, -16, 24, 48);   // 수배지를 게시판에 박은 못 (맨 나중 = 맨 위에 그린다)
+            // 수배지를 게시판에 박은 못 (맨 나중 = 맨 위에 그린다). 자리는 씬에서 손으로 박은 곳
+            PlaceDecoration(poster, "Pin", nail, PosterPin[index].x, PosterPin[index].y, 24, 48);
         }
 
-        // 구경용 수배지 (첫 화면)
-        private static void PlacePosterImage(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, Sprite portrait, EnemyDef enemy, string difficultyName, float x, float top, float angle)
+        // 구경용 수배지 (첫 화면). index : 0 쉬움, 1 보통, 2 어려움 → PosterX · PosterTop · PosterAngle · PosterPin 의 칸
+        private static void PlacePosterImage(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, Sprite portrait, EnemyDef enemy, int index)
         {
-            Image poster = PlacePaper(parent, name, paperSprite, x, top, PosterWidth, PosterHeight, angle);
-            FillPoster(poster.rectTransform, font, nail, portrait, enemy, difficultyName);
+            Image poster = PlacePaper(parent, name, paperSprite, PosterX[index], PosterTop[index], PosterWidth, PosterHeight, PosterAngle[index]);
+            FillPoster(poster.rectTransform, font, nail, portrait, enemy, index);
         }
 
-        // 고르는 수배지 (게임 시작 화면의 난이도 Toggle). index : 0 쉬움, 1 보통, 2 어려움 → PosterX · PosterTop · PosterAngle 의 칸
+        // 고르는 수배지 (게임 시작 화면의 난이도 Toggle). index : 0 쉬움, 1 보통, 2 어려움 → PosterX · PosterTop · PosterAngle · PosterPin 의 칸
         //   켜지면 몽타주에 빨간 동그라미(Toggle 의 Graphic)가 보인다
-        private static Toggle PlacePosterToggle(RectTransform parent, ToggleGroup group, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, Sprite circle, Sprite portrait, EnemyDef enemy, string difficultyName, int index)
+        private static Toggle PlacePosterToggle(RectTransform parent, ToggleGroup group, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, Sprite circle, Sprite portrait, EnemyDef enemy, int index)
         {
             PlaceShadow(parent, name + "Shadow", paperSprite, PosterX[index], PosterTop[index], PosterWidth, PosterHeight, PosterAngle[index]);
 
@@ -1079,7 +1221,7 @@ namespace Game.EditorTools
             SetPaperColors(toggle);
 
             // ② 수배지 내용
-            FillPoster(rect, font, nail, portrait, enemy, difficultyName);
+            FillPoster(rect, font, nail, portrait, enemy, index);
 
             // ③ 켜짐 표시 = 몽타주를 감싼 빨간 동그라미. 내용보다 나중에 만들어야 위에 그려진다
             Image check = GetImage(rect, "Checked");
@@ -1097,7 +1239,8 @@ namespace Game.EditorTools
         }
 
         // 누르는 쪽지 (결투 신청 · 결투 시작 · 뒤로 ...) : 종이 + 글자 + 맨 위 핀
-        private static Button PlaceNoteButton(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, string content, Color textColor, float x, float top, float width, float height, float angle)
+        //   pinX · pinTop : 쪽지 위쪽 가운데 기준 못 자리. 기본은 종이 위로 반쯤 튀어나온 자리 (메인화면은 씬에서 손으로 박은 자리를 넘긴다)
+        private static Button PlaceNoteButton(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, string content, Color textColor, float x, float top, float width, float height, float angle, float pinX = 0f, float pinTop = -16f)
         {
             PlaceShadow(parent, name + "Shadow", paperSprite, x, top, width, height, angle);
 
@@ -1118,14 +1261,15 @@ namespace Game.EditorTools
             SetText(label, font, content, 38, textColor, FontStyles.Bold);
             label.characterSpacing = 2;
 
-            PlaceDecoration(rect, "Pin", nail, 0, -16, 24, 48);
+            PlaceDecoration(rect, "Pin", nail, pinX, pinTop, 24, 48);
             return button;
         }
 
-        // 게시판 아래쪽 공고 한 장 (글자 몇 줄). 양쪽 위에 핀 둘
-        private static void PlaceNotice(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, string content)
+        // 게시판 아래쪽 공고 한 장 (글자 몇 줄). 양쪽에 핀 둘
+        //   pinLeft · pinRight : 공고 위쪽 가운데 기준 (x, 위에서 아래로). 씬에서 손으로 박은 자리를 화면마다 넘긴다
+        private static void PlaceNotice(RectTransform parent, TMP_FontAsset font, string name, Sprite paperSprite, Sprite nail, string content, Vector2 pinLeft, Vector2 pinRight)
         {
-            Image notice = PlacePaper(parent, name, paperSprite, -110, 525, 620, 150, -1f);
+            Image notice = PlacePaper(parent, name, paperSprite, NoticeX, NoticeTop, NoticeWidth, NoticeHeight, -1f);
 
             TextMeshProUGUI text = GetText(notice.rectTransform, "Text");
             Stretch(text.rectTransform);
@@ -1137,17 +1281,25 @@ namespace Game.EditorTools
             text.fontSizeMin = 16;
             text.fontSizeMax = 26;
 
-            PlaceDecoration(notice.rectTransform, "PinLeft", nail, -270, -16, 24, 48);
-            PlaceDecoration(notice.rectTransform, "PinRight", nail, 270, -16, 24, 48);
+            PlaceDecoration(notice.rectTransform, "PinLeft", nail, pinLeft.x, pinLeft.y, 24, 48);
+            PlaceDecoration(notice.rectTransform, "PinRight", nail, pinRight.x, pinRight.y, 24, 48);
         }
 
-        // 내용이 많은 화면(홀스터 조정 · 빠른 조정)을 담는 큰 종이 한 장. 기울이지 않는다 (위에 버튼이 줄지어 있어서)
+        // 내용이 많은 화면(홀스터 조정 · 빠른 조정 · 음량 조절)을 담는 큰 종이 한 장. 기울이지 않는다 (위에 버튼이 줄지어 있어서)
         //   돌려주는 RectTransform 에 자식을 놓으면 자리가 종이 위쪽 가운데 기준이 된다
-        private static RectTransform PlaceSheet(RectTransform parent, string name, Sprite paperSprite, Sprite nail)
+        //   pinLeft · pinRight : 종이 위쪽 가운데 기준 (x, 위에서 아래로). 씬에서 손으로 박은 자리를 화면마다 넘긴다
+        private static RectTransform PlaceSheet(RectTransform parent, string name, Sprite paperSprite, Sprite nail, Vector2 pinLeft, Vector2 pinRight)
         {
-            Image sheet = PlacePaper(parent, name, paperSprite, SheetX, SheetTop, SheetWidth, SheetHeight, 0f);
-            PlaceDecoration(sheet.rectTransform, "PinLeft", nail, -310, -16, 24, 48);
-            PlaceDecoration(sheet.rectTransform, "PinRight", nail, 310, -16, 24, 48);
+            return PlaceSheet(parent, name, paperSprite, nail, pinLeft, pinRight, MainSheet);
+        }
+
+        // box : 종이 자리 · 크기. 못 자리(pinLeft · pinRight)는 메인화면 종이(폭 700) 기준이라 폭에 맞춰 가로로 늘린다
+        private static RectTransform PlaceSheet(RectTransform parent, string name, Sprite paperSprite, Sprite nail, Vector2 pinLeft, Vector2 pinRight, SheetBox box)
+        {
+            float stretch = box.Width / SheetWidth;
+            Image sheet = PlacePaper(parent, name, paperSprite, box.X, box.Top, box.Width, box.Height, 0f);
+            PlaceDecoration(sheet.rectTransform, "PinLeft", nail, pinLeft.x * stretch, pinLeft.y, 24, 48);
+            PlaceDecoration(sheet.rectTransform, "PinRight", nail, pinRight.x * stretch, pinRight.y, 24, 48);
             return sheet.rectTransform;
         }
 
@@ -1163,21 +1315,343 @@ namespace Game.EditorTools
             selectable.colors = colors;
         }
 
-        // 홀스터 조정 줄의 왼쪽 이름표 (높이 / 앞뒤 / 좌우)
-        private static void PlaceRowLabel(RectTransform parent, TMP_FontAsset font, string name, string content, float top)
+        // 큰 종이 안의 줄 이름표 (홀스터 : 높이 / 앞뒤 / 좌우, 음량 : 전체 / 배경음악 ...). 긴 이름은 칸에 맞게 줄인다
+        private static void PlaceRowLabel(RectTransform parent, TMP_FontAsset font, string name, string content, float x, float top, float width, float height)
         {
             TextMeshProUGUI label = GetText(parent, name);
-            PlaceFromTopAt(label.rectTransform, RowLabelX, top, 130, RowHeight);
-            SetText(label, font, content, 32, InkBrown, FontStyles.Bold);
+            PlaceFromTopAt(label.rectTransform, x, top, width, height);
+            SetText(label, font, content, TextButton, InkBrown, FontStyles.Bold);
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 24;
+            label.fontSizeMax = TextButton;
         }
 
-        // 홀스터 조정 버튼 (작은 나무 간판)
-        private static Button PlaceRowButton(RectTransform parent, TMP_FontAsset font, string name, string content, float x, float top)
+        // 큰 종이 안의 작은 나무 간판 버튼 (홀스터 조정)
+        private static Button PlaceRowButton(RectTransform parent, TMP_FontAsset font, string name, string content, float x, float top, float width)
         {
             Button button = GetButton(parent, name);
-            PlaceFromTopAt((RectTransform)button.transform, x, top, 190, RowHeight);
-            ArrangeButton(button, font, content, 32);
+            PlaceFromTopAt((RectTransform)button.transform, x, top, width, RowHeight);
+            ArrangeButton(button, font, content, TextButton);
             return button;
+        }
+
+        // 큰 종이 맨 위 제목 · 맨 아래 안내 (홀스터 조정 · 음량 조절이 같은 자리 · 같은 크기)
+        private static void PlaceSheetHeading(RectTransform sheet, TMP_FontAsset font, string name, string content, SheetBox box)
+        {
+            TextMeshProUGUI heading = GetText(sheet, name);
+            PlaceFromTop(heading.rectTransform, 30, box.Width - 120, 54);
+            SetText(heading, font, content, TextHeading, InkRed, FontStyles.Bold);
+        }
+
+        private static void PlaceSheetHint(RectTransform sheet, TMP_FontAsset font, string name, string content, SheetBox box)
+        {
+            TextMeshProUGUI hint = GetText(sheet, name);
+            PlaceFromTop(hint.rectTransform, box.Height - 52, box.Width - 100, 34);
+            SetText(hint, font, content, TextHint, InkBrown, FontStyles.Normal);
+            hint.enableAutoSizing = true;   // 종이가 좁으면 칸에 맞게 줄인다
+            hint.fontSizeMin = 18;
+            hint.fontSizeMax = TextHint;
+        }
+
+        // ---------------------------------------------------------------- 홀스터 조정 · 음량 조절 종이 (메인화면 판 · 일시 정지 판이 같이 쓴다)
+
+        // 홀스터 조정 종이에서 메뉴 스크립트에 꽂을 것들
+        private struct HolsterSheet
+        {
+            public TextMeshProUGUI Text;
+            public Button Up, Down, Forward, Backward, Left, Right, Reset;
+            public Button Quick;   // withQuick 이 false 면 null
+        }
+
+        // [홀스터 조정 화면] 게시판에 붙인 큰 종이 한 장(Sheet) 위에 조정 버튼들. 뒤로 쪽지는 부르는 쪽이 따로 단다
+        //   방향 버튼 이름은 '~쪽' 으로 맞췄다. '뒤로' 는 화면을 돌아가는 버튼이라 헷갈리지 않게
+        //   좌우는 '왼쪽 · 오른쪽' 이다. 왼손잡이는 홀스터가 왼쪽 허리라서 '안쪽 · 바깥쪽' 이 손마다 반대가 된다
+        //   withQuick : '빠른 조정' 버튼을 둔다 (메인화면만. 일시 정지 판은 '처음 자리' 하나를 가운데에)
+        //   Sheet 안의 자리는 Sheet 위쪽 가운데 기준이다
+        //   배치 : 이름표 | 버튼 | 버튼 세 칸을 한 덩어리로 묶어 종이 가운데에 둔다. 버튼 폭은 종이 폭에 맞춰 정한다 (최대 220)
+        //          줄 사이 · 처음 자리 · 안내는 종이 높이에 맞춰 내려간다
+        private static HolsterSheet PlaceHolsterSheet(RectTransform page, TMP_FontAsset font, Sprite sheetPaper, Sprite nail, bool withQuick, SheetBox box)
+        {
+            RectTransform sheet = PlaceSheet(page, "Sheet", sheetPaper, nail, new Vector2(-298.7f, 38.1f), new Vector2(287f, 40f), box);
+            HolsterSheet result = new HolsterSheet();
+
+            PlaceSheetHeading(sheet, font, "HolsterLabel", "홀스터 위치", box);
+
+            //    글자는 편집할 때 보이는 예시다. Play 하면 메뉴 스크립트가 저장된 자리로 바꾼다
+            result.Text = GetText(sheet, "HolsterText");
+            PlaceFromTop(result.Text.rectTransform, 86, box.Width - 100, 40);
+            SetText(result.Text, font, "머리에서 아래 60cm · 오른쪽 20cm · 앞 6cm", TextBody, InkBrown, FontStyles.Normal);
+            result.Text.enableAutoSizing = true;   // 숫자가 길어지면 칸에 맞게 줄인다 (SetText 가 끄므로 그 뒤에 켠다)
+            result.Text.fontSizeMin = 22;
+            result.Text.fontSizeMax = TextBody;
+
+            //    세 칸 : 이름표 160 | 틈 20 | 버튼 | 틈 20 | 버튼
+            const float labelWidth = 160f;
+            const float gap = 20f;
+            float buttonWidth = Mathf.Min(220f, (box.Width - 80f - labelWidth - gap * 2f) * 0.5f);
+            float groupLeft = -(labelWidth + gap * 2f + buttonWidth * 2f) * 0.5f;
+            float labelX = groupLeft + labelWidth * 0.5f;
+            float leftX = groupLeft + labelWidth + gap + buttonWidth * 0.5f;
+            float rightX = leftX + buttonWidth + gap;
+
+            //    줄 : 홀스터 자리 글자 아래부터, 안내 위까지 셋 + 처음 자리 한 줄을 고르게
+            float rowTop = 136f;
+            float rowGap = Mathf.Min(80f, (box.Height - 52f - 12f - rowTop) / 4f);
+
+            PlaceRowLabel(sheet, font, "HeightLabel", "높이", labelX, rowTop, labelWidth, RowHeight);
+            result.Up = PlaceRowButton(sheet, font, "UpButton", "위쪽", leftX, rowTop, buttonWidth);
+            result.Down = PlaceRowButton(sheet, font, "DownButton", "아래쪽", rightX, rowTop, buttonWidth);
+
+            PlaceRowLabel(sheet, font, "DepthLabel", "앞뒤", labelX, rowTop + rowGap, labelWidth, RowHeight);
+            result.Forward = PlaceRowButton(sheet, font, "ForwardButton", "앞쪽", leftX, rowTop + rowGap, buttonWidth);
+            result.Backward = PlaceRowButton(sheet, font, "BackwardButton", "뒤쪽", rightX, rowTop + rowGap, buttonWidth);
+
+            PlaceRowLabel(sheet, font, "SideLabel", "좌우", labelX, rowTop + rowGap * 2f, labelWidth, RowHeight);
+            result.Left = PlaceRowButton(sheet, font, "LeftButton", "왼쪽", leftX, rowTop + rowGap * 2f, buttonWidth);
+            result.Right = PlaceRowButton(sheet, font, "RightButton", "오른쪽", rightX, rowTop + rowGap * 2f, buttonWidth);
+
+            //    처음 자리 (· 빠른 조정) : 버튼 두 칸 자리 아래에. 빠른 조정이 없으면 두 칸을 다 쓴다
+            float bottomTop = rowTop + rowGap * 3f;
+            result.Reset = GetButton(sheet, "ResetButton");
+            if (withQuick)
+            {
+                PlaceFromTopAt((RectTransform)result.Reset.transform, leftX, bottomTop, buttonWidth, RowHeight);
+                result.Quick = GetButton(sheet, "QuickButton");
+                PlaceFromTopAt((RectTransform)result.Quick.transform, rightX, bottomTop, buttonWidth, RowHeight);
+                ArrangeButton(result.Quick, font, "빠른 조정", TextButton);
+            }
+            else
+            {
+                PlaceFromTopAt((RectTransform)result.Reset.transform, (leftX + rightX) * 0.5f, bottomTop, buttonWidth * 2f + gap, RowHeight);
+            }
+            ArrangeButton(result.Reset, font, "처음 자리", TextButton);
+
+            PlaceSheetHint(sheet, font, "HolsterHint", "버튼을 누르면 총이 홀스터로 돌아옵니다. 뽑아 보며 맞추세요", box);
+            return result;
+        }
+
+        // 빠른 조정 화면 두 장에서 메뉴 스크립트에 꽂을 것들 (뒤로 쪽지는 부르는 쪽이 따로 단다)
+        private struct QuickPages
+        {
+            public RectTransform HandPage, FollowPage;
+            public Button LeftHand, RightHand;
+            public TextMeshProUGUI FollowText;
+        }
+
+        // [주 손 고르기 화면] 빠른 조정 1단계 · [손 따라가기 화면] 빠른 조정 2단계 (메인화면 판 · 일시 정지 판이 같이 쓴다)
+        //   손 따라가기에는 버튼 없이 안내 글자만 둔다
+        //   여기에 버튼(취소 등)을 두면, 주 손으로 그 버튼을 누르려는 트리거가 확정이 되어 버린다
+        private static QuickPages PlaceQuickPages(RectTransform panel, TMP_FontAsset font, Sprite sheetPaper, Sprite nail, SheetBox box)
+        {
+            QuickPages result = new QuickPages();
+            Vector2 pinLeft = new Vector2(-297.3f, 36.2f);    // 씬에서 손으로 박은 자리 (빠른 조정 1 · 2단계 같은 종이)
+            Vector2 pinRight = new Vector2(293.1f, 40.8f);
+
+            // ① 주 손 고르기
+            result.HandPage = CreatePage(panel, "HandPage");
+            RectTransform handSheet = PlaceSheet(result.HandPage, "Sheet", sheetPaper, nail, pinLeft, pinRight, box);
+            PlaceSheetHeading(handSheet, font, "HandLabel", "빠른 조정", box);
+
+            TextMeshProUGUI handText = GetText(handSheet, "HandText");
+            PlaceFromTop(handText.rectTransform, 100, box.Width - 100, 90);
+            SetText(handText, font, "주로 쓰는 손을 고르세요\n홀스터가 그 손을 따라갑니다", TextBody, InkBrown, FontStyles.Normal);
+            handText.lineSpacing = 10;
+
+            //    큰 나무 간판 둘 : 종이 높이 가운데쯤
+            float handTop = Mathf.Round((box.Height - 110f) * 0.5f + 50f);
+            result.LeftHand = GetButton(handSheet, "LeftHandButton");
+            PlaceFromTopAt((RectTransform)result.LeftHand.transform, -150, handTop, 260, 110);
+            ArrangeButton(result.LeftHand, font, "왼손잡이", TextHeading);
+
+            result.RightHand = GetButton(handSheet, "RightHandButton");
+            PlaceFromTopAt((RectTransform)result.RightHand.transform, 150, handTop, 260, 110);
+            ArrangeButton(result.RightHand, font, "오른손잡이", TextHeading);
+
+            // ② 손 따라가기
+            result.FollowPage = CreatePage(panel, "FollowPage");
+            RectTransform followSheet = PlaceSheet(result.FollowPage, "Sheet", sheetPaper, nail, pinLeft, pinRight, box);
+            PlaceSheetHeading(followSheet, font, "FollowLabel", "빠른 조정", box);
+
+            //    글자는 편집할 때 보이는 예시다. Play 하면 메뉴 스크립트가 고른 손에 맞게 바꾼다
+            result.FollowText = GetText(followSheet, "FollowText");
+            PlaceFromTop(result.FollowText.rectTransform, 110, box.Width - 100, 160);
+            SetText(result.FollowText, font, "오른손을 홀스터를 둘 자리에 대고\n오른손 트리거를 누르세요", TextHeading, InkRed, FontStyles.Bold);
+            result.FollowText.lineSpacing = 20;
+            result.FollowText.enableAutoSizing = true;   // 한 줄이 칸보다 길면 줄인다 (SetText 가 끄므로 그 뒤에 켠다)
+            result.FollowText.fontSizeMin = 28;
+            result.FollowText.fontSizeMax = TextHeading;
+
+            TextMeshProUGUI followHint = GetText(followSheet, "FollowHint");
+            PlaceFromTop(followHint.rectTransform, box.Height - 140f, box.Width - 100, 80);
+            SetText(followHint, font, "홀스터가 손을 따라옵니다\n확정한 뒤 버튼으로 더 다듬을 수 있습니다", TextBody, InkBrown, FontStyles.Normal);
+            followHint.lineSpacing = 10;
+
+            result.HandPage.gameObject.SetActive(false);
+            result.FollowPage.gameObject.SetActive(false);
+            return result;
+        }
+
+        // 홀스터 조정 종이의 버튼 · 글자를 메뉴 스크립트 칸에 꽂는다 (MainMenu · PauseMenu 의 칸 이름이 같다)
+        private static void SetHolsterFields(SerializedObject data, HolsterSheet holster)
+        {
+            SetField(data, "holsterText", holster.Text);
+            SetField(data, "upButton", holster.Up);
+            SetField(data, "downButton", holster.Down);
+            SetField(data, "forwardButton", holster.Forward);
+            SetField(data, "backwardButton", holster.Backward);
+            SetField(data, "leftButton", holster.Left);
+            SetField(data, "rightButton", holster.Right);
+            SetField(data, "resetButton", holster.Reset);
+        }
+
+        // [음량 조절 화면] 홀스터 조정처럼 큰 종이 한 장 위에 줄 넷 (이름표 | 탄띠 슬라이더 | %). 뒤로 쪽지는 부르는 쪽이 따로 단다
+        //   슬라이더는 VolumeSlider 가 스스로 SoundManager 와 이어서, 메뉴 스크립트에 꽂을 것이 없다
+        //   배치 : 이름표 | 탄띠 | % 세 칸을 한 덩어리로 묶어 종이 가운데에 둔다
+        //          탄띠 폭은 종이 폭에 맞춰 정하고(최대 VolumeBeltMax), 쉘 · 고리 · 탄띠 높이는 탄띠 폭에 비례해 커진다
+        //          네 줄은 제목 아래 ~ 안내 위 사이에 고르게
+        private static void PlaceVolumeSheet(RectTransform page, TMP_FontAsset font, Sprite sheetPaper, Sprite nail, Sprite belt, Sprite shell, Sprite strap, SheetBox box)
+        {
+            RectTransform sheet = PlaceSheet(page, "Sheet", sheetPaper, nail, new Vector2(-298.7f, 38.1f), new Vector2(287f, 40f), box);   // 홀스터 조정 종이와 같은 자리
+
+            PlaceSheetHeading(sheet, font, "VolumeLabel", "음량", box);
+
+            //    세 칸 : 이름표 150 | 틈 20 | 탄띠 | 틈 20 | % 110
+            const float labelWidth = 150f;
+            const float valueWidth = 110f;
+            const float gap = 20f;
+            float beltWidth = Mathf.Min(VolumeBeltMax, box.Width - 80f - labelWidth - valueWidth - gap * 2f);
+            float groupLeft = -(labelWidth + gap * 2f + beltWidth + valueWidth) * 0.5f;
+            VolumeRowLayout layout = new VolumeRowLayout
+            {
+                LabelX = groupLeft + labelWidth * 0.5f,
+                LabelWidth = labelWidth,
+                BeltX = groupLeft + labelWidth + gap + beltWidth * 0.5f,
+                BeltWidth = beltWidth,
+                ValueX = groupLeft + labelWidth + gap * 2f + beltWidth + valueWidth * 0.5f,
+                ValueWidth = valueWidth,
+            };
+
+            //    줄 높이 = 탄띠 줄(쉘이 위아래로 삐져나온 높이). 네 줄을 제목(84) 아래 ~ 안내 위에 고르게
+            float rowHeight = layout.SliderHeight;
+            float firstTop = 96f;
+            float rowGap = (box.Height - 52f - 16f - firstTop - rowHeight) / 3f;
+
+            PlaceVolumeRow(sheet, font, belt, shell, strap, layout, "Master", "전체", SoundChannel.Master, firstTop);
+            PlaceVolumeRow(sheet, font, belt, shell, strap, layout, "Bgm", "배경음악", SoundChannel.Bgm, firstTop + rowGap);
+            PlaceVolumeRow(sheet, font, belt, shell, strap, layout, "Sfx", "효과음", SoundChannel.Sfx, firstTop + rowGap * 2f);
+            PlaceVolumeRow(sheet, font, belt, shell, strap, layout, "Ambience", "환경음", SoundChannel.Ambience, firstTop + rowGap * 3f);
+
+            PlaceSheetHint(sheet, font, "VolumeHint", "트리거를 누른 채 탄띠를 따라 끌어 맞추세요 · 효과음을 끄면 정오의 종도 꺼짐", box);
+        }
+
+        // 음량 줄의 가로 자리 (종이 위쪽 가운데 기준 x) · 폭. 탄띠 폭이 정해지면 쉘 · 고리 크기도 따라 정해진다
+        //   크기의 기준 : 탄띠 300 칸일 때 쉘 20 × 46, 탄띠 높이 40, 줄(슬라이더) 높이 48 → 탄띠 폭에 비례해 키운다
+        private struct VolumeRowLayout
+        {
+            public float LabelX, LabelWidth, BeltX, BeltWidth, ValueX, ValueWidth;
+            public float Scale => BeltWidth / BeltWidthBase;
+            public float SliderHeight => 48f * Scale;
+        }
+
+        // 음량 조절 줄 하나 : 이름표 | 탄띠 슬라이더 | 퍼센트. 슬라이더에 VolumeSlider 를 붙여 갈래를 정한다
+        //   Sheet 위쪽 가운데 기준. 이름표는 홀스터 조정 줄과 같은 자리
+        //   탄띠 : 가죽 띠 위 고리 10개에 샷건 쉘이 음량만큼 꽂힌다. 쉘을 켜고 끄는 건 VolumeSlider 가 한다
+        //   그리는 순서 (Hierarchy 위 → 아래 = 뒤 → 앞) : 탄띠 → 쉘 10발 → 가죽 고리 10개
+        //     고리는 쉘과 따로라서 쉘이 빠진 칸에도 남는다 (탄띠의 일부). 쉘이 꽂히면 고리 아래로 지나가 꽂혀 보인다
+        //   손잡이는 없다. 탄띠 어디를 가리키든 그 칸까지 쉘이 채워진다 (끌면 따라 늘고 준다)
+        private static void PlaceVolumeRow(RectTransform sheet, TMP_FontAsset font, Sprite belt, Sprite shell, Sprite strap, VolumeRowLayout layout, string key, string content, SoundChannel channel, float top)
+        {
+            float scale = layout.Scale;
+            float rowHeight = layout.SliderHeight;
+            float beltWidth = layout.BeltWidth;
+
+            // ① 이름표 (배경음악처럼 긴 이름은 칸에 맞게 줄인다). 탄띠 줄과 같은 높이로 세로 가운데 맞춤
+            PlaceRowLabel(sheet, font, key + "Label", content, layout.LabelX, top, layout.LabelWidth, rowHeight);
+
+            // ② 슬라이더 = 탄띠 줄
+            GameObject sliderObject = GetOrCreateChild(sheet, key + "Slider");
+            RectTransform sliderRect = (RectTransform)sliderObject.transform;
+            PlaceFromTopAt(sliderRect, layout.BeltX, top, beltWidth, rowHeight);
+
+            //    가죽 탄띠 : 줄 가운데에. 레이가 여기에 닿으면 그 칸까지 쉘이 찬다
+            Image beltImage = GetImage(sliderRect, "Belt");
+            PlaceCenter(beltImage.rectTransform, 0, 0, beltWidth, 40f * scale);
+            beltImage.sprite = belt;
+            beltImage.type = Image.Type.Simple;
+            beltImage.color = Color.white;
+            beltImage.raycastTarget = true;
+
+            //    채움 칸 : 그림 없이 자리만 (Slider 가 "어디를 가리켰나 → 몇 %" 를 이 칸 폭으로 계산한다)
+            RectTransform fillArea = (RectTransform)GetOrCreateChild(sliderRect, "Fill Area").transform;
+            Stretch(fillArea);
+            RectTransform fill = (RectTransform)GetOrCreateChild(fillArea, "Fill").transform;
+            Stretch(fill);
+
+            //    쉘 10발 : 고리 가운데마다 하나씩. 탄띠보다 조금 길어서 위아래로 살짝 삐져나온다
+            RectTransform shellRow = (RectTransform)GetOrCreateChild(sliderRect, "Shells").transform;
+            Stretch(shellRow);
+            GameObject[] shells = new GameObject[WantedPosterArt.BeltLoops];
+            float pitch = beltWidth / WantedPosterArt.BeltLoops;
+            for (int i = 0; i < shells.Length; i++)
+            {
+                Image shellImage = GetImage(shellRow, $"Shell{i + 1}");
+                PlaceCenter(shellImage.rectTransform, -beltWidth * 0.5f + pitch * (i + 0.5f), 0, 20f * scale, 46f * scale);
+                shellImage.sprite = shell;
+                shellImage.type = Image.Type.Simple;
+                shellImage.color = Color.white;
+                shellImage.raycastTarget = false;   // 레이는 탄띠가 받는다
+                shells[i] = shellImage.gameObject;
+            }
+
+            //    가죽 고리 10개 : 쉘보다 나중에 만들어 쉘 위에 그린다. 늘 켜져 있다 (VolumeSlider 가 건드리지 않는다)
+            //    그림 2점 = 1칸. 띠의 가운데 줄은 그림 가운데보다 StrapAnchorOffset 점 위에 있다
+            //    → 그림을 그만큼 내려서 띠 가운데 줄이 쉘 가운데(줄 높이 0)에 오게 한다
+            RectTransform strapRow = (RectTransform)GetOrCreateChild(sliderRect, "Straps").transform;
+            Stretch(strapRow);
+            for (int i = 0; i < WantedPosterArt.BeltLoops; i++)
+            {
+                Image strapImage = GetImage(strapRow, $"Strap{i + 1}");
+                PlaceCenter(strapImage.rectTransform, -beltWidth * 0.5f + pitch * (i + 0.5f), -WantedPosterArt.StrapAnchorOffset * 0.5f * scale,
+                    WantedPosterArt.StrapWidth * 0.5f * scale, WantedPosterArt.StrapHeight * 0.5f * scale);
+                strapImage.sprite = strap;
+                strapImage.type = Image.Type.Simple;
+                strapImage.color = Color.white;
+                strapImage.raycastTarget = false;   // 레이는 탄띠가 받는다
+            }
+
+            Slider slider = sliderObject.GetComponent<Slider>();
+            if (slider == null)
+                slider = Undo.AddComponent<Slider>(sliderObject);
+            slider.fillRect = fill;
+            slider.handleRect = null;                // 손잡이 없음 : 가리킨 칸까지 쉘이 찬다
+            slider.targetGraphic = beltImage;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            slider.wholeNumbers = false;
+            slider.value = 1f;                     // 편집할 때 보이는 값 (10발). Play 하면 VolumeSlider 가 저장된 음량으로 바꾼다
+            SetPaperColors(slider);                // 가리키면 탄띠가 밝아진다
+            Navigation navigation = slider.navigation;
+            navigation.mode = Navigation.Mode.None;   // 컨트롤러 스틱 입력으로 슬라이더가 움직이지 않게
+            slider.navigation = navigation;
+
+            // ③ 퍼센트
+            TextMeshProUGUI value = GetText(sheet, key + "Value");
+            PlaceFromTopAt(value.rectTransform, layout.ValueX, top, layout.ValueWidth, rowHeight);
+            SetText(value, font, "100%", TextButton, InkBrown, FontStyles.Bold);
+
+            // ④ VolumeSlider : 갈래 · 퍼센트 글자 칸을 채운다
+            VolumeSlider volumeSlider = sliderObject.GetComponent<VolumeSlider>();
+            if (volumeSlider == null)
+                volumeSlider = Undo.AddComponent<VolumeSlider>(sliderObject);
+            SerializedObject sliderData = new SerializedObject(volumeSlider);
+            SerializedProperty channelField = sliderData.FindProperty("channel");
+            if (channelField == null)
+                throw new Exception("[WantedPosterLayout] VolumeSlider 에 channel 칸이 없습니다. 필드 이름이 바뀌었으면 여기도 고쳐 주세요.");
+            channelField.enumValueIndex = (int)channel;
+            SetField(sliderData, "valueText", value);
+            SetArrayField(sliderData, "shells", shells);
+            sliderData.ApplyModifiedProperties();
         }
 
         // ---------------------------------------------------------------- 자식 찾기 / 만들기
