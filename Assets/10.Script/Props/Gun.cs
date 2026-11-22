@@ -204,8 +204,8 @@ namespace Game
                     shot.Zone = zone;
 
                 // ④ 쏜 모습 : 총성 · 총구 화염 · 궤적, 그리고 닿은 면(hit.normal)에서 파편이 튄다
-                //    적(HitZone)을 맞혔으면 빨간 파편, 벽 · 바닥이면 모래색 파편
-                effects.Play(shot.Point, hit.normal, shot.Zone != null);
+                //    적(HitZone)을 맞혔으면 빨간 파편, 벽 · 바닥이면 모래색 파편 + 총알 구멍
+                effects.Play(hit, shot.Zone != null);
             }
             else
             {

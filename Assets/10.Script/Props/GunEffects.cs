@@ -41,6 +41,20 @@ namespace Game
         [SerializeField] private Color enemyDebrisColorDark = new Color(0.45f, 0.02f, 0.02f);
         private const float DebrisSurfaceOffset = 0.01f;       // 면에서 살짝 띄워 터뜨린다 (면 속에서 생기면 반쯤 묻혀 안 보인다)
 
+        [Header("총알 구멍")]
+        [SerializeField] private Material holeMaterial;        // BulletHole.mat (URP Unlit + Alpha Clipping). 총구 효과 자동 설정이 만든다
+        [SerializeField] private float holeSize = 0.05f;       // 구멍 지름 (m). 발마다 0.8 ~ 1.2배로 흔든다
+        [SerializeField] private int maxHoles = 40;            // 이보다 많아지면 가장 오래된 구멍부터 옮겨 쓴다
+        private const float HoleSurfaceOffset = 0.002f;        // 면에서 아주 살짝 띄운다 (딱 붙이면 면과 깜빡이며 겹친다)
+        private const int HoleTextureSize = 64;
+
+        // 구멍 : 맞은 오브젝트의 자식으로 붙인다 → 움직이는 소품을 맞혀도 구멍이 따라간다
+        //   적(HitZone)에는 남기지 않는다. 적의 콜라이더는 몸 모양이 아닌 캡슐 · 상자라서 구멍이 허공에 뜬다
+        private readonly List<GameObject> holes = new List<GameObject>();
+        private int nextHole;              // 다음에 옮겨 쓸 구멍 (가득 찬 뒤)
+        private Material holeInstance;     // 코드로 그린 구멍 그림을 입힌 머티리얼 (처음 쏠 때 만든다)
+        private Mesh quadMesh;
+
         // 자국 머리가 날아가는 빠르기. 총알이 어디쯤 왔는지 맞춰야 하는 쪽(스치는 소리)이 읽는다
         public float BulletSpeed => bulletSpeed;
 
@@ -81,20 +95,22 @@ namespace Game
         //   target = 총알이 끝나는 곳 (맞은 곳, 또는 빗나가서 지나간 먼 곳)
         public void Play(Vector3 target)
         {
-            PlayShot(target, false, Vector3.zero, false);
+            PlayShot(target, false, Vector3.zero, null, false);
         }
 
-        // 한 발 쏜 모습 + 총알이 target 에 닿는 순간 그 면(hitNormal 쪽)으로 파편이 튄다
-        //   hitEnemy = 적을 맞혔다 → 빨간 파편. 아니면 HitDebris 에 정해 둔 모래색
-        public void Play(Vector3 target, Vector3 hitNormal, bool hitEnemy)
+        // 한 발 쏜 모습 + 총알이 hit 에 닿는 순간 그 면으로 파편이 튀고, 면에 구멍이 남는다
+        //   hitEnemy = 적을 맞혔다 → 빨간 파편, 구멍 없음. 아니면 HitDebris 에 정해 둔 모래색 + 구멍
+        public void Play(RaycastHit hit, bool hitEnemy)
         {
             if (hitDebris == null)
                 throw new Exception($"[GunEffects] {name} 의 Hit Debris 칸이 비어 있습니다. GunEffects 의 ⋮ 메뉴 → \"총구 효과 자동 설정\" 을 다시 눌러 주세요.");
+            if (holeMaterial == null)
+                throw new Exception($"[GunEffects] {name} 의 Hole Material 칸이 비어 있습니다. GunEffects 의 ⋮ 메뉴 → \"총구 효과 자동 설정\" 을 다시 눌러 주세요.");
 
-            PlayShot(target, true, hitNormal, hitEnemy);
+            PlayShot(hit.point, true, hit.normal, hit.collider.transform, hitEnemy);
         }
 
-        private void PlayShot(Vector3 target, bool hasHit, Vector3 hitNormal, bool hitEnemy)
+        private void PlayShot(Vector3 target, bool hasHit, Vector3 hitNormal, Transform hitSurface, bool hitEnemy)
         {
             // ① 총성. PlayOneShot 은 소리가 겹쳐도 앞 소리를 끊지 않는다
             audioSource.PlayOneShot(fireClip);
@@ -104,7 +120,101 @@ namespace Game
 
             // ③ 총알 자국. 발마다 새 자국 → 앞 자국은 자기 시간대로 가라앉는다
             //    파편은 자국 머리가 끝점에 닿는 순간 튄다 (쏘는 순간 터지면 총알보다 파편이 먼저 보인다)
-            StartCoroutine(WakeRoutine(ShowWake(), transform.position, target, hasHit, hitNormal, hitEnemy));
+            StartCoroutine(WakeRoutine(ShowWake(), transform.position, target, hasHit, hitNormal, hitSurface, hitEnemy));
+        }
+
+        // 맞은 면에 총알 구멍을 남긴다. 가득 차면 가장 오래된 구멍을 옮겨 쓴다
+        private void SpawnHole(Vector3 point, Vector3 normal, Transform surface)
+        {
+            // 총알이 날아가는 사이 맞은 오브젝트가 사라졌다
+            if (surface == null) return;
+
+            GameObject hole = TakeHole();
+            Transform holeTransform = hole.transform;
+
+            // ① 부모 없이 월드에서 자리 · 크기를 맞춘다
+            //    Quad 는 뒤(-z)에서 보이는 면이라 -normal 쪽을 보게 돌리고, 모양이 매번 같지 않게 z 로 한 바퀴 무작위로 돌린다
+            holeTransform.SetParent(null, false);
+            Quaternion rotation = Quaternion.LookRotation(-normal) * Quaternion.Euler(0f, 0f, UnityEngine.Random.Range(0f, 360f));
+            holeTransform.SetPositionAndRotation(point + normal * HoleSurfaceOffset, rotation);
+            holeTransform.localScale = Vector3.one * (holeSize * UnityEngine.Random.Range(0.8f, 1.2f));
+
+            // ② 맞은 오브젝트의 자식으로 (true = 월드 자리 · 크기를 그대로 둔다)
+            holeTransform.SetParent(surface, true);
+            hole.SetActive(true);
+        }
+
+        // 구멍 하나 꺼내기 : maxHoles 개까지는 새로 만들고, 그 뒤로는 가장 오래된 것부터 옮겨 쓴다
+        //   맞은 오브젝트가 지워지면 그 자식 구멍도 같이 지워진다 → 그 칸은 새로 만든다
+        private GameObject TakeHole()
+        {
+            if (holes.Count < maxHoles)
+            {
+                GameObject created = CreateHole();
+                holes.Add(created);
+                return created;
+            }
+
+            int index = nextHole;
+            nextHole = (nextHole + 1) % holes.Count;
+            if (holes[index] == null)
+                holes[index] = CreateHole();
+            return holes[index];
+        }
+
+        // 새 구멍 : Quad 모양 + 구멍 머티리얼. 콜라이더는 붙이지 않는다 (총알 · UI 레이가 구멍에 막히면 안 된다)
+        private GameObject CreateHole()
+        {
+            if (holeInstance == null)
+            {
+                holeInstance = new Material(holeMaterial);   // 에셋은 그대로 두고 복사본에 그림을 입힌다
+                holeInstance.SetTexture("_BaseMap", CreateHoleTexture());
+                quadMesh = Resources.GetBuiltinResource<Mesh>("Quad.fbx");
+            }
+
+            GameObject hole = new GameObject("BulletHole");
+            hole.AddComponent<MeshFilter>().sharedMesh = quadMesh;
+            MeshRenderer holeRenderer = hole.AddComponent<MeshRenderer>();
+            holeRenderer.sharedMaterial = holeInstance;
+            holeRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            holeRenderer.receiveShadows = false;
+            hole.SetActive(false);
+            return hole;
+        }
+
+        // 구멍 그림 : 가운데 검은 구멍 + 둘레에 그을린 갈색 테. 가장자리는 들쭉날쭉하게, 바깥은 투명 (Alpha Clipping 으로 잘린다)
+        private static Texture2D CreateHoleTexture()
+        {
+            Texture2D texture = new Texture2D(HoleTextureSize, HoleTextureSize, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+
+            Color hole = new Color(0.03f, 0.02f, 0.02f);
+            Color scorch = new Color(0.22f, 0.16f, 0.11f);
+            float half = HoleTextureSize / 2f;
+
+            for (int y = 0; y < HoleTextureSize; y++)
+            {
+                for (int x = 0; x < HoleTextureSize; x++)
+                {
+                    float dx = (x + 0.5f - half) / half;
+                    float dy = (y + 0.5f - half) / half;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);   // 가운데 0, 변 한가운데 1
+
+                    // 각도마다 테두리 반지름을 조금씩 흔든다 (들쭉날쭉한 깨진 자국)
+                    float angle = Mathf.Atan2(dy, dx);
+                    float jag = Mathf.PerlinNoise(Mathf.Cos(angle) * 2f + 5f, Mathf.Sin(angle) * 2f + 5f);
+                    float holeRadius = 0.28f + jag * 0.08f;
+                    float scorchRadius = 0.6f + jag * 0.35f;
+
+                    Color pixel;
+                    if (d < holeRadius) pixel = hole;
+                    else if (d < scorchRadius) pixel = Color.Lerp(hole, scorch, Mathf.InverseLerp(holeRadius, scorchRadius, d));
+                    else pixel = Color.clear;
+                    texture.SetPixel(x, y, pixel);
+                }
+            }
+            texture.Apply();
+            return texture;
         }
 
         // 닿은 곳에서 파편을 튀긴다. HitDebris 는 월드 기준(World)으로 움직여서,
@@ -129,7 +239,7 @@ namespace Game
             }
         }
 
-        private IEnumerator WakeRoutine(LineRenderer line, Vector3 from, Vector3 to, bool hasHit, Vector3 hitNormal, bool hitEnemy)
+        private IEnumerator WakeRoutine(LineRenderer line, Vector3 from, Vector3 to, bool hasHit, Vector3 hitNormal, Transform hitSurface, bool hitEnemy)
         {
             Vector3 direction = (to - from).normalized;
             float distance = Vector3.Distance(from, to);
@@ -148,9 +258,13 @@ namespace Game
             }
             line.SetPosition(1, to);
 
-            // 머리가 닿았다 → 파편
+            // 머리가 닿았다 → 파편, 적이 아니면 구멍도
             if (hasHit)
+            {
                 SpawnDebris(to, hitNormal, hitEnemy);
+                if (hitEnemy == false)
+                    SpawnHole(to, hitNormal, hitSurface);
+            }
 
             // ② 자국이 가라앉는다 (세기 1 → 0)
             float timer = 0f;

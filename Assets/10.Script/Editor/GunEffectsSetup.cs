@@ -9,6 +9,7 @@ namespace Game.EditorTools
     //   ① 자식 MuzzleFlash (Particle System) 를 만들고 총구 화염 모양으로 맞춘다
     //      자식 HitDebris (Particle System) 를 만들고 닿은 곳 파편 모양으로 맞춘다
     //   ② LineRenderer 를 총알 자국(BulletWake) 모양으로 맞춘다
+    //      총알 구멍 머티리얼(BulletHole.mat)을 만들어 Hole Material 칸에 꽂는다
     //   ③ AudioSource 를 총성용으로 맞춘다
     //   ④ GunEffects 의 MuzzleFlash 칸, 부모 Gun 의 Effects 칸을 연결한다
     //   총성 클립(Fire Clip)은 직접 꽂는다. 모양을 바꾸고 싶으면 아래 숫자만 고치고 메뉴를 다시 누른다.
@@ -21,6 +22,9 @@ namespace Game.EditorTools
         private const string MaterialFolder = "Assets/40.Shader";
         private const string WakeMaterialPath = MaterialFolder + "/BulletWake.mat";
         private const string FlashMaterialPath = MaterialFolder + "/MuzzleFlash.mat";
+        private const string HoleMaterialPath = MaterialFolder + "/BulletHole.mat";
+        private const string HoleShaderName = "Universal Render Pipeline/Unlit";
+        private const float HoleAlphaCutoff = 0.5f;                  // 그림의 알파가 이보다 낮은 곳은 잘라 낸다 (구멍 바깥)
         private const string WakeShaderName = "Game/BulletWake";
         private const string FlashObjectName = "MuzzleFlash";
 
@@ -146,6 +150,7 @@ namespace Game.EditorTools
             // ① 재료 (머티리얼 두 개. 없으면 만든다)
             Material wakeMaterial = LoadOrCreateWakeMaterial();
             Material flashMaterial = LoadOrCreateFlashMaterial();
+            Material holeMaterial = LoadOrCreateHoleMaterial();
 
             // ② 총구 화염
             ParticleSystem flash = FindOrCreateFlash(effects.transform);
@@ -165,6 +170,7 @@ namespace Game.EditorTools
             SerializedObject effectsObject = new SerializedObject(effects);
             effectsObject.FindProperty("muzzleFlash").objectReferenceValue = flash;
             effectsObject.FindProperty("hitDebris").objectReferenceValue = debris;
+            effectsObject.FindProperty("holeMaterial").objectReferenceValue = holeMaterial;
             effectsObject.ApplyModifiedProperties();
 
             //    부모에 플레이어 총(Gun)이 있으면 Gun 의 Effects 칸도 이 총구로 (적 총은 Gun 이 없어서 건너뛴다)
@@ -386,6 +392,33 @@ namespace Game.EditorTools
 
             material = new Material(shader);
             AssetDatabase.CreateAsset(material, WakeMaterialPath);
+            return material;
+        }
+
+        // BulletHole 머티리얼 : URP Unlit + Alpha Clipping (구멍 바깥을 잘라 낸 불투명). 그림은 GunEffects 가 코드로 그려 입힌다
+        //   반투명(Transparent) 대신 잘라 내기를 쓰는 이유 : 불투명이라 그리는 차례를 신경 쓸 필요가 없고 Quest 에서 가볍다
+        //   그림자 · 빛을 받지 않는 Unlit : 구멍 안은 늘 어두워야 해서 빛을 받을 필요가 없다
+        private static Material LoadOrCreateHoleMaterial()
+        {
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(HoleMaterialPath);
+            if (material == null)
+            {
+                Shader shader = Shader.Find(HoleShaderName);
+                if (shader == null)
+                    throw new Exception($"[GunEffectsSetup] {HoleShaderName} 셰이더를 못 찾았습니다. URP 패키지가 설치돼 있는지 확인해 주세요.");
+
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, HoleMaterialPath);
+            }
+
+            Undo.RecordObject(material, UndoName);
+            material.SetFloat("_Surface", 0f);            // Opaque
+            material.SetFloat("_AlphaClip", 1f);          // Alpha Clipping 켬
+            material.SetFloat("_Cutoff", HoleAlphaCutoff);
+            material.EnableKeyword("_ALPHATEST_ON");      // 칸만 켜면 안 되고, 셰이더 키워드도 켜야 실제로 잘린다
+            material.SetColor("_BaseColor", Color.white); // 색은 그림 그대로
+            material.renderQueue = (int)RenderQueue.AlphaTest;
+            EditorUtility.SetDirty(material);
             return material;
         }
 
