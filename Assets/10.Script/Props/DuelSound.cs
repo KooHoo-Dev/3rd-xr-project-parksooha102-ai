@@ -34,6 +34,7 @@ namespace Game
         private void Awake()
         {
             audioSource = GetComponent<AudioSource>();
+            SoundManager.Route(audioSource, SoundChannel.Bgm);
             lowPass = GetComponent<AudioLowPassFilter>();
             fullVolume = audioSource.volume;
             lowPass.cutoffFrequency = OpenCutoff;

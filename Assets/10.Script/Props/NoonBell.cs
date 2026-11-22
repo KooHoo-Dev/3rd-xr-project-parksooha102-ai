@@ -13,6 +13,7 @@ namespace Game
         private void Awake()
         {
             audioSource = GetComponent<AudioSource>();
+            SoundManager.Route(audioSource, SoundChannel.Sfx);   // 신호라도 효과음 갈래. 효과음을 0 으로 하면 종도 안 들린다
         }
 
         private void OnEnable()

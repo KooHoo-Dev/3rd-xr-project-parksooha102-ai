@@ -18,6 +18,7 @@ namespace Game
         private void Awake()
         {
             audioSource = GetComponent<AudioSource>();
+            SoundManager.Route(audioSource, SoundChannel.Sfx);
         }
 
         private void OnEnable()
