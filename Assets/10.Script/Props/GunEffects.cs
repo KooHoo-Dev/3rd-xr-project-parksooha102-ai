@@ -33,6 +33,9 @@ namespace Game
         [SerializeField] private float bulletSpeed = 120f;     // 자국 머리가 날아가는 빠르기 (m/초). 진짜 총알(약 300m/초)은 너무 빨라 안 보여서 줄였다
         [SerializeField] private float wakeLifetime = 0.8f;    // 끝점에 닿은 뒤 자국이 가라앉는 시간 (초)
 
+        // 자국 머리가 날아가는 빠르기. 총알이 어디쯤 왔는지 맞춰야 하는 쪽(스치는 소리)이 읽는다
+        public float BulletSpeed => bulletSpeed;
+
         // 지금 화면에 보이는 자국 수 (플레이어 것 + 적 것). static = 모든 GunEffects 가 같이 쓰는 칸 하나
         //   화면 복사(Opaque Texture)는 카메라에 하나라서, 마지막 자국이 사라질 때만 끈다
         private static int visibleWakeCount;
@@ -48,6 +51,7 @@ namespace Game
         private void Awake()
         {
             audioSource = GetComponent<AudioSource>();
+            SoundManager.Route(audioSource, SoundChannel.Sfx);   // 플레이어 총 · 적 총 둘 다
             template = GetComponent<LineRenderer>();
 
             // 자국은 BulletWake 셰이더로 그려야 한다. 다른 머티리얼이면 그냥 색 줄이 그려진다
