@@ -126,6 +126,10 @@ namespace Game
             //    PlayerPlacer 가 추적이 잡힐 때까지 기다렸다가 세운다. 그동안 1라운드는 시작하지 않는다
             yield return playerPlacer.PlaceFirst(GetGroundPosition(DuelStartPosition), Quaternion.LookRotation(DuelForward));
 
+            //    적도 1라운드 자리에 세운 다음 암전을 걷는다 (자리 잡는 모습이 안 보이게)
+            PlaceEnemy(1);
+            ScreenFader.FadeIn();
+
             for (int round = 1; round <= enemyDef.RoundCount; round++)
             {
                 // ① 대치
@@ -382,7 +386,7 @@ namespace Game
         public void RestartDuel()
         {
             Debug.Log("[StageManager] 다시 결투");
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            ScreenFader.LoadScene(SceneManager.GetActiveScene().name);   // 암전한 뒤 연다
         }
 
         // 메인화면으로 (결과판의 '메인으로' 버튼이 부른다)
@@ -390,7 +394,7 @@ namespace Game
         public void ReturnToMainMenu()
         {
             Debug.Log("[StageManager] 메인화면으로");
-            SceneManager.LoadScene(MainMenuSceneName);
+            ScreenFader.LoadScene(MainMenuSceneName);   // 암전한 뒤 연다
         }
     }
 }
