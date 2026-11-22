@@ -36,7 +36,7 @@ namespace Game
 
         [Header("격발 매커니즘")]
         [SerializeField, Range(0.1f, 1f)] private float breakPoint = 0.9f;   // 트리거가 여기를 넘으면 해머가 떨어진다
-        [SerializeField, Range(0f, 0.9f)] private float resetPoint = 0.2f;   // 여기 아래로 놓아야 다시 쏠 수 있다
+        [SerializeField, Range(0f, 0.9f)] private float resetPoint = 0.15f;  // 여기 아래로 놓아야 다시 쏠 수 있다 (너무 낮으면 덜 놓았을 때 리셋이 안 돼서 발사가 씹힌다)
 
         [Header("손맛")]
         [SerializeField] private float fireHapticAmplitude = 0.9f;
@@ -145,7 +145,8 @@ namespace Game
 
             TriggerPull = heldTrigger.action != null ? heldTrigger.action.ReadValue<float>() : 0f;
 
-            // ④ 해머가 떨어진 뒤 : 트리거를 충분히 놓을 때까지 해머는 제자리
+            // ④ 해머가 떨어진 뒤 (분리) : 트리거를 반만 놓든 다시 당기든 해머 · 실린더는 제자리.
+            //    resetPoint 아래까지 놓아야 다시 맞물린다 (연결)
             if (hammerDropped)
             {
                 if (TriggerPull < resetPoint)
@@ -153,8 +154,9 @@ namespace Game
                 return;
             }
 
-            // ① 당긴 만큼 젖혀진다 (격발점에서 1)
-            HammerCock = Mathf.Clamp01(TriggerPull / breakPoint);
+            // ① 당긴 만큼 젖혀진다 (리셋점에서 0, 격발점에서 1)
+            //    리셋점부터 세는 이유 : 다시 맞물리는 순간 해머가 튀어 오르지 않고 제자리에서 출발한다
+            HammerCock = Mathf.InverseLerp(resetPoint, breakPoint, TriggerPull);
 
             // ② 격발점을 넘었다 → 해머가 떨어진다
             if (TriggerPull >= breakPoint)
@@ -171,8 +173,7 @@ namespace Game
             // 잠겨 있으면 해머만 떨어지고 총알은 나가지 않는다 (헛방아쇠)
             if (IsLocked)
             {
-                if (dryFireClip != null)
-                    AudioSource.PlayClipAtPoint(dryFireClip, transform.position);
+                SoundManager.PlayClipAtPoint(dryFireClip, transform.position, SoundChannel.Sfx);   // 효과음 음량을 따른다
                 Debug.Log("[Gun] 잠겨 있어서 나가지 않았다");
                 return;
             }
