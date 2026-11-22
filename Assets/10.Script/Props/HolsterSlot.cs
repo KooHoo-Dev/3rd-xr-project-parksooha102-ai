@@ -79,6 +79,10 @@ namespace Game
             if (clip == null) return;
             if (Time.timeSinceLevelLoad < startupMute) return;
 
+            // 일시 정지 중에는 소리를 내지 않는다. 멈춘 동안 낸 소리는 AudioListener.pause 에 막혀 있다가
+            //   풀리는 순간 한꺼번에 난다 (멈춘 동안 뽑은 총은 PauseMenu 가 도로 꽂는다)
+            if (GamePause.IsPaused) return;
+
             frictionSource.pitch = pitch;
             frictionSource.PlayOneShot(clip, frictionVolume);
         }

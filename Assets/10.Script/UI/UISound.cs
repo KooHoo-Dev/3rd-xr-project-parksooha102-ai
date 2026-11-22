@@ -95,7 +95,21 @@ namespace Game
             source.Play();
 
             // 피치를 낮추면 소리가 길어진다 → 길이 ÷ 피치 만큼 기다렸다가 지운다
-            Destroy(voice, clip.length / source.pitch + 0.1f);
+            //   Destroy(voice, 시간) 은 게임 시간을 따라서 일시 정지(timeScale 0) 중에는 지워지지 않는다 → 실제 시간으로 센다
+            voice.AddComponent<RealtimeDestroy>().lifetime = clip.length / source.pitch + 0.1f;
+        }
+
+        // 실제 시간(unscaledDeltaTime)으로 lifetime 초가 지나면 스스로 지운다
+        private class RealtimeDestroy : MonoBehaviour
+        {
+            public float lifetime;
+
+            private void Update()
+            {
+                lifetime -= Time.unscaledDeltaTime;
+                if (lifetime <= 0f)
+                    Destroy(gameObject);
+            }
         }
     }
 }
