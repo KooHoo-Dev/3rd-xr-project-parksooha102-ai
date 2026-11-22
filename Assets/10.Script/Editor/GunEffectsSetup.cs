@@ -7,6 +7,7 @@ namespace Game.EditorTools
 {
     // [에디터 도구] 총구(GunEffects)를 한 번에 꾸민다. GunEffects 의 ⋮ 메뉴 → "총구 효과 자동 설정"
     //   ① 자식 MuzzleFlash (Particle System) 를 만들고 총구 화염 모양으로 맞춘다
+    //      자식 HitDebris (Particle System) 를 만들고 닿은 곳 파편 모양으로 맞춘다
     //   ② LineRenderer 를 총알 자국(BulletWake) 모양으로 맞춘다
     //   ③ AudioSource 를 총성용으로 맞춘다
     //   ④ GunEffects 의 MuzzleFlash 칸, 부모 Gun 의 Effects 칸을 연결한다
@@ -42,6 +43,20 @@ namespace Game.EditorTools
         private static readonly Color FlashColorBright = new Color(1f, 0.95f, 0.6f);    // 막 터진 색 (흰 노랑)
         private static readonly Color FlashColorMid = new Color(1f, 0.6f, 0.15f);       // 주황
         private static readonly Color FlashColorEnd = new Color(0.9f, 0.25f, 0.05f);    // 사라질 때 (붉은 주황)
+
+        // ---- 파편 (총알이 닿은 면에서 튄다) ----
+        private const string DebrisObjectName = "HitDebris";
+        private const float DebrisLifetimeMin = 0.4f;
+        private const float DebrisLifetimeMax = 0.8f;
+        private const float DebrisSpeedMin = 1.5f;                   // 면에서 튀어 나오는 빠르기 (m/초)
+        private const float DebrisSpeedMax = 4f;
+        private const float DebrisSizeMin = 0.015f;                  // 파편 크기 (m)
+        private const float DebrisSizeMax = 0.05f;
+        private const float DebrisGravity = 1.5f;                    // 튀었다가 떨어진다
+        private const float DebrisConeAngle = 40f;                   // 면에서 퍼지는 각도 (도)
+        private const int DebrisMaxParticles = 200;                  // 연달아 쏴도 앞 발 파편이 잘리지 않게
+        private static readonly Color DebrisColorLight = new Color(0.86f, 0.74f, 0.52f);   // 밝은 모래색
+        private static readonly Color DebrisColorDark = new Color(0.45f, 0.34f, 0.24f);    // 어두운 흙색
 
         // ---- 총알 자국 ----
         private const float WakeWidth = 0.07f;                       // 자국 굵기 (m). 렌즈가 보이려면 너무 가늘면 안 된다
@@ -136,6 +151,10 @@ namespace Game.EditorTools
             ParticleSystem flash = FindOrCreateFlash(effects.transform);
             SetupFlash(flash, flashMaterial);
 
+            //    파편 (화염과 같은 머티리얼. 색은 알갱이 색으로 정한다)
+            ParticleSystem debris = FindOrCreateChildParticle(effects.transform, DebrisObjectName);
+            SetupDebris(debris, flashMaterial);
+
             // ③ 총알 자국
             SetupWake(effects.GetComponent<LineRenderer>(), wakeMaterial);
 
@@ -145,6 +164,7 @@ namespace Game.EditorTools
             // ⑤ 칸 연결 (private 칸이라 SerializedObject 로 이름을 적어 넣는다)
             SerializedObject effectsObject = new SerializedObject(effects);
             effectsObject.FindProperty("muzzleFlash").objectReferenceValue = flash;
+            effectsObject.FindProperty("hitDebris").objectReferenceValue = debris;
             effectsObject.ApplyModifiedProperties();
 
             //    부모에 플레이어 총(Gun)이 있으면 Gun 의 Effects 칸도 이 총구로 (적 총은 Gun 이 없어서 건너뛴다)
@@ -163,10 +183,16 @@ namespace Game.EditorTools
         // 자식 MuzzleFlash 를 찾고, 없으면 만든다
         private static ParticleSystem FindOrCreateFlash(Transform muzzle)
         {
-            Transform child = muzzle.Find(FlashObjectName);
+            return FindOrCreateChildParticle(muzzle, FlashObjectName);
+        }
+
+        // 총구 아래 이름이 objectName 인 자식 Particle System 을 찾고, 없으면 만든다
+        private static ParticleSystem FindOrCreateChildParticle(Transform muzzle, string objectName)
+        {
+            Transform child = muzzle.Find(objectName);
             if (child == null)
             {
-                GameObject flashObject = new GameObject(FlashObjectName);
+                GameObject flashObject = new GameObject(objectName);
                 Undo.RegisterCreatedObjectUndo(flashObject, UndoName);   // Ctrl+Z 하면 만든 것도 지운다
                 child = flashObject.transform;
                 child.SetParent(muzzle, false);
@@ -247,6 +273,72 @@ namespace Game.EditorTools
             // 프리팹 안의 오브젝트면 "바꿨다" 고 프리팹에 알린다 (안 하면 저장할 때 바뀐 값이 빠질 수 있다)
             PrefabUtility.RecordPrefabInstancePropertyModifications(flash);
             PrefabUtility.RecordPrefabInstancePropertyModifications(flashRenderer);
+        }
+
+        // 파편 모양 : 면(z)에서 원뿔로 튀어 나와 중력에 떨어지며 옅어진다
+        //   스스로는 뿜지 않는다 (Emission 꺼짐). GunEffects 가 닿은 곳으로 옮긴 뒤 Emit 으로 한 번에 터뜨린다
+        //   늘 재생 중(loop)으로 두는 이유 : 멈춘 시스템에 Emit 하면 알갱이가 움직이지 않을 수 있다
+        private static void SetupDebris(ParticleSystem debris, Material material)
+        {
+            Undo.RecordObject(debris, UndoName);
+            debris.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            // ① Main : 늘 켜져 있고, 월드 기준으로 움직인다 (발사기를 옮겨도 튄 파편은 제자리)
+            ParticleSystem.MainModule main = debris.main;
+            main.duration = 1f;
+            main.loop = true;
+            main.playOnAwake = true;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(DebrisLifetimeMin, DebrisLifetimeMax);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(DebrisSpeedMin, DebrisSpeedMax);
+            main.startSize = new ParticleSystem.MinMaxCurve(DebrisSizeMin, DebrisSizeMax);
+            main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            main.startColor = new ParticleSystem.MinMaxGradient(DebrisColorLight, DebrisColorDark);   // 두 색 사이 무작위
+            main.gravityModifier = DebrisGravity;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.scalingMode = ParticleSystemScalingMode.Local;
+            main.maxParticles = DebrisMaxParticles;
+
+            // ② Emission : 꺼 둔다. 터뜨리는 건 GunEffects.Emit
+            ParticleSystem.EmissionModule emission = debris.emission;
+            emission.enabled = false;
+
+            // ③ Shape : 면에서 바깥(z)으로 원뿔
+            ParticleSystem.ShapeModule shape = debris.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = DebrisConeAngle;
+            shape.radius = 0.01f;
+            shape.position = Vector3.zero;
+            shape.rotation = Vector3.zero;
+
+            // ④ Color over Lifetime : 색은 그대로, 끝에서 투명
+            ParticleSystem.ColorOverLifetimeModule colorOverLifetime = debris.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            Gradient gradient = new Gradient();
+            gradient.SetKeys(
+                new GradientColorKey[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new GradientAlphaKey[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 0.6f), new GradientAlphaKey(0f, 1f) });
+            colorOverLifetime.color = gradient;
+
+            // ⑤ Size over Lifetime : 조금씩 작아진다
+            ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = debris.sizeOverLifetime;
+            sizeOverLifetime.enabled = true;
+            sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0.5f));
+
+            // 화염용 다른 모듈이 켜져 있으면 끈다 (예전에 손으로 만든 오브젝트를 재사용할 때)
+            ParticleSystem.VelocityOverLifetimeModule velocity = debris.velocityOverLifetime;
+            velocity.enabled = false;
+
+            // ⑥ Renderer : 카메라를 보는 알갱이, 그림자 없음
+            ParticleSystemRenderer debrisRenderer = debris.GetComponent<ParticleSystemRenderer>();
+            Undo.RecordObject(debrisRenderer, UndoName);
+            debrisRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            debrisRenderer.sharedMaterial = material;
+            debrisRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            debrisRenderer.receiveShadows = false;
+
+            PrefabUtility.RecordPrefabInstancePropertyModifications(debris);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(debrisRenderer);
         }
 
         // 총알 자국 모양 : BulletWake 머티리얼, 카메라를 보는 띠, 그림자 없음. 쏘기 전에는 꺼 둔다

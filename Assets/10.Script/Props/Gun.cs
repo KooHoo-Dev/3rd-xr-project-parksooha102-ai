@@ -202,15 +202,19 @@ namespace Game
                 //    벽 · 바닥처럼 HitZone 이 없는 곳을 맞히면 Zone 은 비어 있다 → 빗나감. 이건 정상이다
                 if (hit.collider.TryGetComponent(out HitZone zone))
                     shot.Zone = zone;
+
+                // ④ 쏜 모습 : 총성 · 총구 화염 · 궤적, 그리고 닿은 면(hit.normal)에서 파편이 튄다
+                //    적(HitZone)을 맞혔으면 빨간 파편, 벽 · 바닥이면 모래색 파편
+                effects.Play(shot.Point, hit.normal, shot.Zone != null);
             }
             else
             {
-                // 아무것도 안 맞았다 (허공) → 사거리 끝을 닿은 곳으로 적는다
+                // 아무것도 안 맞았다 (허공) → 사거리 끝을 닿은 곳으로 적는다. 닿은 면이 없으니 파편도 없다
                 shot.Point = muzzle.position + muzzle.forward * range;
+                effects.Play(shot.Point);
             }
 
-            // ④ 쏜 모습 : 총성 · 총구 화염, 그리고 닿은 곳까지 궤적. 쥔 손에는 반동 진동
-            effects.Play(shot.Point);
+            // 쥔 손에는 반동 진동
             if (haptics != null)
                 haptics.SendHapticImpulse(fireHapticAmplitude, fireHapticDuration);
 

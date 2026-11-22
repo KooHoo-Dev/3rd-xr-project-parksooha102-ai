@@ -19,6 +19,7 @@ namespace Game
     //   오브젝트 구성 (총구 = 이 오브젝트의 위치, 파란 화살표 z = 쏘는 방향)
     //     Muzzle         ← GunEffects + AudioSource + LineRenderer (Material = BulletWake)
     //       MuzzleFlash  ← Particle System (한 오브젝트에 Renderer 는 하나뿐이라 자식으로 뺀다)
+    //       HitDebris    ← Particle System (총알이 닿은 면에서 튀는 파편. 쏠 때마다 닿은 곳으로 옮겨 터뜨린다)
     [RequireComponent(typeof(AudioSource))]
     [RequireComponent(typeof(LineRenderer))]
     public class GunEffects : MonoBehaviour
@@ -28,10 +29,17 @@ namespace Game
         [Header("연결")]
         [SerializeField] private ParticleSystem muzzleFlash;   // 자식 MuzzleFlash
         [SerializeField] private AudioClip fireClip;           // 총성
+        [SerializeField] private ParticleSystem hitDebris;     // 자식 HitDebris. 총알이 닿은 면에서 파편이 튄다 (적 총은 비워 둬도 된다)
 
         [Header("총알 자국")]
         [SerializeField] private float bulletSpeed = 120f;     // 자국 머리가 날아가는 빠르기 (m/초). 진짜 총알(약 300m/초)은 너무 빨라 안 보여서 줄였다
         [SerializeField] private float wakeLifetime = 0.8f;    // 끝점에 닿은 뒤 자국이 가라앉는 시간 (초)
+
+        [Header("파편")]
+        [SerializeField] private int debrisCount = 14;         // 한 발에 튀는 파편 수
+        [SerializeField] private Color enemyDebrisColorLight = new Color(0.85f, 0.08f, 0.06f);   // 적을 맞혔을 때 파편 색 (두 색 사이 무작위)
+        [SerializeField] private Color enemyDebrisColorDark = new Color(0.45f, 0.02f, 0.02f);
+        private const float DebrisSurfaceOffset = 0.01f;       // 면에서 살짝 띄워 터뜨린다 (면 속에서 생기면 반쯤 묻혀 안 보인다)
 
         // 자국 머리가 날아가는 빠르기. 총알이 어디쯤 왔는지 맞춰야 하는 쪽(스치는 소리)이 읽는다
         public float BulletSpeed => bulletSpeed;
@@ -73,6 +81,21 @@ namespace Game
         //   target = 총알이 끝나는 곳 (맞은 곳, 또는 빗나가서 지나간 먼 곳)
         public void Play(Vector3 target)
         {
+            PlayShot(target, false, Vector3.zero, false);
+        }
+
+        // 한 발 쏜 모습 + 총알이 target 에 닿는 순간 그 면(hitNormal 쪽)으로 파편이 튄다
+        //   hitEnemy = 적을 맞혔다 → 빨간 파편. 아니면 HitDebris 에 정해 둔 모래색
+        public void Play(Vector3 target, Vector3 hitNormal, bool hitEnemy)
+        {
+            if (hitDebris == null)
+                throw new Exception($"[GunEffects] {name} 의 Hit Debris 칸이 비어 있습니다. GunEffects 의 ⋮ 메뉴 → \"총구 효과 자동 설정\" 을 다시 눌러 주세요.");
+
+            PlayShot(target, true, hitNormal, hitEnemy);
+        }
+
+        private void PlayShot(Vector3 target, bool hasHit, Vector3 hitNormal, bool hitEnemy)
+        {
             // ① 총성. PlayOneShot 은 소리가 겹쳐도 앞 소리를 끊지 않는다
             audioSource.PlayOneShot(fireClip);
 
@@ -80,10 +103,33 @@ namespace Game
             muzzleFlash.Play();
 
             // ③ 총알 자국. 발마다 새 자국 → 앞 자국은 자기 시간대로 가라앉는다
-            StartCoroutine(WakeRoutine(ShowWake(), transform.position, target));
+            //    파편은 자국 머리가 끝점에 닿는 순간 튄다 (쏘는 순간 터지면 총알보다 파편이 먼저 보인다)
+            StartCoroutine(WakeRoutine(ShowWake(), transform.position, target, hasHit, hitNormal, hitEnemy));
         }
 
-        private IEnumerator WakeRoutine(LineRenderer line, Vector3 from, Vector3 to)
+        // 닿은 곳에서 파편을 튀긴다. HitDebris 는 월드 기준(World)으로 움직여서,
+        //   발사기를 옮겨도 이미 튄 파편은 제자리에서 떨어진다 → 한 발마다 옮겨서 터뜨리면 된다
+        private void SpawnDebris(Vector3 point, Vector3 normal, bool hitEnemy)
+        {
+            hitDebris.transform.SetPositionAndRotation(point + normal * DebrisSurfaceOffset, Quaternion.LookRotation(normal));
+
+            if (hitEnemy == false)
+            {
+                hitDebris.Emit(debrisCount);   // HitDebris 에 정해 둔 색 (모래색)
+                return;
+            }
+
+            // 적 : 색만 빨강으로 바꿔 한 알씩 터뜨린다. 자리 · 방향 · 크기는 HitDebris 설정(Shape 등)을 그대로 따른다
+            //   머티리얼을 바꾸지 않는 이유 : 한 시스템 안에 모래색 파편이 아직 떨어지는 중일 수 있어서
+            ParticleSystem.EmitParams emitParams = new ParticleSystem.EmitParams();
+            for (int i = 0; i < debrisCount; i++)
+            {
+                emitParams.startColor = Color.Lerp(enemyDebrisColorDark, enemyDebrisColorLight, UnityEngine.Random.value);
+                hitDebris.Emit(emitParams, 1);
+            }
+        }
+
+        private IEnumerator WakeRoutine(LineRenderer line, Vector3 from, Vector3 to, bool hasHit, Vector3 hitNormal, bool hitEnemy)
         {
             Vector3 direction = (to - from).normalized;
             float distance = Vector3.Distance(from, to);
@@ -101,6 +147,10 @@ namespace Game
                 yield return null;
             }
             line.SetPosition(1, to);
+
+            // 머리가 닿았다 → 파편
+            if (hasHit)
+                SpawnDebris(to, hitNormal, hitEnemy);
 
             // ② 자국이 가라앉는다 (세기 1 → 0)
             float timer = 0f;
