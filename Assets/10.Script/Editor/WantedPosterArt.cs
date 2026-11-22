@@ -716,6 +716,203 @@ namespace Game.EditorTools
             return SaveSprite(fileName, size, size, pixels, Vector4.zero);
         }
 
+        // ================================================================ 음량 탄띠 (메인화면 음량 조절)
+
+        private static readonly Color HullRed = new Color32(168, 36, 28, 255);      // 샷건 쉘 몸통 (붉은 종이 · 플라스틱)
+        private static readonly Color HullDark = new Color32(92, 18, 14, 255);
+        private static readonly Color HullLight = new Color32(222, 92, 70, 255);
+        private static readonly Color Leather = new Color32(112, 68, 38, 255);      // 탄띠 가죽
+        private static readonly Color LeatherDark = new Color32(58, 33, 18, 255);
+        private static readonly Color LeatherLight = new Color32(150, 98, 58, 255);
+        private static readonly Color Stitch = new Color32(214, 186, 132, 255);     // 바느질 실
+
+        public const int BeltLoops = 10;   // 탄띠 고리 수 = 음량 10칸 (10% 씩)
+
+        // 쉘 그림의 높이 자리 (점, 그림 맨 위에서 아래로). 위에서 살짝 내려다본 원통이라 가로 경계는 모두 가운데가 아래로 휜다
+        private const float ShellCapCenter = 6f;     // 윗면 타원 가운데
+        private const float ShellCapHalfHeight = 5f; // 윗면 타원 세로 반지름 (가로 반지름은 테 폭의 절반) → 납작할수록 옆에서 본 느낌
+        private const float ShellBend = 5f;          // 가로 경계가 가운데에서 아래로 휘는 양 (= 윗면 타원 세로 반지름과 같게 → 같은 원근)
+        private const float ShellRimEnd = 12f;       // 황동 테 (윗면 바로 아래 두꺼운 띠) 끝
+        private const float ShellBrassEnd = 32f;     // 황동 밑동 끝
+        private const float ShellHullEnd = 80f;      // 붉은 몸통 끝 → 그 아래는 접힌 끝
+
+        // 샷건 쉘 한 발 (위에서 살짝 내려다본 원통) : 위 = 황동 바닥(타원 윗면 + 가운데 신관), 아래 = 붉은 몸통 (끝은 옆면만)
+        //   탄띠에 거꾸로(황동이 위로) 꽂은 모양. 쉘을 쥐는 가죽 고리는 따로 그린다 (CreateBeltStrap)
+        //   40 × 96 점 → 탄띠에는 20 × 48 칸으로 꽂는다. 빛은 왼쪽 위에서 (게시판의 다른 그림과 같게)
+        //
+        //   입체를 만드는 방법 : 그림의 높이(sy)에서 "가운데가 아래로 휜 양(bend)" 을 뺀 높이(s)로 칸을 나눈다
+        //     → 테 · 밑동 · 몸통 · 고리 띠의 경계가 모두 아래로 볼록한 호가 되어, 원통을 위에서 내려다본 것처럼 보인다
+        public static Sprite CreateShotgunShell(string fileName)
+        {
+            const int width = 40;
+            const int height = 96;
+            const float rimHalf = 19f;     // 테 · 윗면 가로 반지름
+            const float brassHalf = 17f;   // 황동 밑동 가로 반지름
+            const float hullHalf = 15f;    // 붉은 몸통 가로 반지름
+            Color[] pixels = new Color[width * height];
+
+            for (int y = 0; y < height; y++)
+            {
+                float sy = height - 1 - y + 0.5f;   // 그림 맨 위에서 아래로 (점 가운데)
+                for (int x = 0; x < width; x++)
+                {
+                    float dx = x + 0.5f - width * 0.5f;                  // 가운데에서 가로로 (-20 ~ 20)
+                    float u = (x + 0.5f) / width;                        // 0 ~ 1
+                    float round = Mathf.Sin(u * Mathf.PI);               // 원기둥 : 가운데가 앞으로 나와 밝다
+                    float light = Mathf.Clamp01(1f - Mathf.Abs(u - 0.36f) * 3.2f);   // 왼쪽에서 빛 → 세로 하이라이트
+                    Color color = Color.clear;
+
+                    // 이 세로줄에서 가로 경계가 아래로 휜 양 (가운데 최대, 양끝 0)
+                    float bend = ShellBend * Mathf.Sqrt(Mathf.Max(0f, 1f - (dx / rimHalf) * (dx / rimHalf)));
+                    float s = sy - bend;   // 휜 경계에 맞춘 높이
+
+                    // ① 윗면 (황동 바닥) : 타원. 바깥 테두리 고리 + 가운데 신관
+                    float capU = dx / rimHalf;
+                    float capV = (sy - ShellCapCenter) / ShellCapHalfHeight;
+                    float cap = capU * capU + capV * capV;               // 1 이하면 윗면 안
+                    if (cap <= 1f)
+                    {
+                        // 바닥 면은 위를 본다 → 몸통보다 밝다. 왼쪽 위가 가장 밝게
+                        color = Color.Lerp(CartridgeBrass, CartridgeBrassLight, Mathf.Clamp01(0.55f - capU * 0.35f - capV * 0.25f));
+                        if (cap > 0.78f) color = Shade(color, 0.72f);    // 테 둘레 (바닥 가장자리 턱)
+                        if (cap > 0.62f && cap <= 0.7f) color = Shade(color, 0.85f);   // 안쪽 홈 한 줄
+
+                        // 신관 : 가운데 작은 은색 타원 + 어두운 테. 오른쪽 아래가 어두운 오목한 금속
+                        float pu = dx / 6.5f;
+                        float pv = (sy - ShellCapCenter) / 2.6f;
+                        float primer = pu * pu + pv * pv;
+                        if (primer <= 1f)
+                            color = Color.Lerp(Primer, Shade(Primer, 0.65f), Mathf.Clamp01(0.4f + pu * 0.3f + pv * 0.3f));
+                        if (primer > 1f && primer <= 1.45f)
+                            color = Shade(CartridgeBrass, 0.5f);         // 신관 둘레 홈
+
+                        pixels[y * width + x] = color;
+                        continue;
+                    }
+
+                    // ② 황동 테 (윗면 아래 두꺼운 띠) : 윗면 타원 아래쪽부터 휜 경계 ShellRimEnd 까지
+                    if (sy > ShellCapCenter && s < ShellRimEnd)
+                    {
+                        if (Mathf.Abs(dx) < rimHalf)
+                            color = Shade(Color.Lerp(CartridgeBrass, CartridgeBrassLight, light), 0.5f + round * 0.45f);
+                    }
+                    // ③ 황동 밑동 : 테보다 조금 가늘다. 몸통 쪽 끝에 접힌 줄 하나
+                    else if (s >= ShellRimEnd && s < ShellBrassEnd)
+                    {
+                        if (Mathf.Abs(dx) < brassHalf)
+                        {
+                            color = Shade(Color.Lerp(CartridgeBrass, CartridgeBrassLight, light), 0.6f + round * 0.45f);
+                            if (s < ShellRimEnd + 1.5f) color = Shade(color, 0.6f);        // 테 아래 그늘
+                            if (s > ShellBrassEnd - 3f) color = Shade(color, 0.72f);       // 몸통에 물린 접힌 줄
+                        }
+                    }
+                    // ④ 붉은 몸통 : 가로 결이 희미하게 (결도 휘어서 원통으로 보인다)
+                    else if (s >= ShellBrassEnd && s < ShellHullEnd)
+                    {
+                        if (Mathf.Abs(dx) < hullHalf)
+                        {
+                            color = Color.Lerp(HullDark, HullRed, 0.35f + round * 0.65f);
+                            color = Color.Lerp(color, HullLight, light * 0.55f);
+                            if (Mathf.Repeat(s - ShellBrassEnd, 7f) < 1f) color = Shade(color, 0.9f);
+                        }
+                    }
+                    // ⑤ 아래쪽 끝 (접힌 끝의 옆면) : 위에서 내려다보니 끝의 면(별 모양 접힘)은 안 보이고 옆면만 보인다
+                    //    끝으로 갈수록 조금 오므라들고 어두워진다. 아래 윤곽은 휜 경계라서 둥근 원통 바닥으로 보인다
+                    else if (s >= ShellHullEnd)
+                    {
+                        float t = (s - ShellHullEnd) / 9f;                // 0 ~ 1 (몸통 쪽 → 끝)
+                        float halfWidth = hullHalf * (1f - t * t * 0.18f);   // 끝이 살짝 오므라든다
+                        if (t <= 1f && Mathf.Abs(dx) < halfWidth)
+                        {
+                            color = Color.Lerp(HullDark, HullRed, 0.35f + round * 0.65f);
+                            color = Color.Lerp(color, HullLight, light * 0.55f);
+                            color = Shade(color, 1f - t * 0.25f);       // 끝으로 갈수록 조금 어둡게
+                        }
+                    }
+
+                    pixels[y * width + x] = color;
+                }
+            }
+            return SaveSprite(fileName, width, height, pixels, Vector4.zero);
+        }
+
+        // 탄띠 고리 하나 (쉘을 감싸 쥐는 가죽 띠). 쉘과 따로 그려서 탄띠 위 · 쉘 위에 늘 깔아 둔다
+        //   → 쉘이 빠진 칸에도 고리는 남는다. 쉘이 꽂히면 고리 아래로 쉘이 지나가 꽂혀 보인다
+        //   48 × 40 점 → 탄띠에는 24 × 20 칸으로 깐다 (쉘 20 칸보다 조금 넓어 쉘을 감싼다)
+        //   쉘과 같은 원근 : 위아래 경계가 가운데에서 아래로 휜다. 띠 바로 아래에 반투명 그림자 (쉘이나 탄띠 위에 진다)
+        //   띠의 휘지 않은 가운데 줄이 그림 위에서 StrapBandTop + StrapBandHeight / 2 점 → 그림 가운데보다 StrapAnchorOffset 점 위
+        public const int StrapWidth = 48;
+        public const int StrapHeight = 40;
+        private const float StrapBandTop = 4f;      // 띠 위 경계 (그림 맨 위에서, 휘지 않은 양끝 기준)
+        private const float StrapBandHeight = 24f;  // 띠 두께 (쉘 그림의 고리 띠와 같은 비율)
+        private const float StrapBend = 5f;         // 가운데가 아래로 휘는 양 (쉘의 원근과 같게)
+        public const float StrapAnchorOffset = StrapHeight * 0.5f - (StrapBandTop + StrapBandHeight * 0.5f);   // = 4 점
+
+        public static Sprite CreateBeltStrap(string fileName)
+        {
+            const float half = StrapWidth * 0.5f;
+            Color[] pixels = new Color[StrapWidth * StrapHeight];
+            for (int y = 0; y < StrapHeight; y++)
+            {
+                float sy = StrapHeight - 1 - y + 0.5f;   // 그림 맨 위에서 아래로
+                for (int x = 0; x < StrapWidth; x++)
+                {
+                    float dx = x + 0.5f - half;
+                    float u = (x + 0.5f) / StrapWidth;
+                    float round = Mathf.Sin(u * Mathf.PI);   // 둥글게 감겨 가운데가 앞으로 나와 밝다
+                    float bend = StrapBend * Mathf.Sqrt(Mathf.Max(0f, 1f - (dx / half) * (dx / half)));
+                    float strap = sy - bend - StrapBandTop;   // 0 = 띠 위 경계, 아래로 +
+                    Color color = Color.clear;
+
+                    if (strap >= 0f && strap < StrapBandHeight)
+                    {
+                        float v = strap / StrapBandHeight;    // 0 (위) ~ 1 (아래)
+                        color = Color.Lerp(Leather, LeatherLight, Mathf.PerlinNoise(x * 0.3f + 5f, y * 0.3f + 2f) * 0.5f);
+                        color = Shade(color, 0.7f + round * 0.45f);
+                        if (v < 0.12f) color = Color.Lerp(color, LeatherLight, 0.6f);   // 위 가장자리 빛
+                        if (v > 0.86f) color = Color.Lerp(color, LeatherDark, 0.7f);    // 아래 가장자리 그늘
+                        if (Mathf.Abs(dx) > half - 3f) color = Color.Lerp(color, LeatherDark, 0.6f);   // 양옆 끝 : 탄띠로 꺾여 들어가는 그늘
+                    }
+                    else if (strap >= StrapBandHeight && strap < StrapBandHeight + 3f)
+                    {
+                        float shadow = 1f - (strap - StrapBandHeight) / 3f;   // 띠에 붙은 줄이 가장 진하다
+                        color = new Color(0f, 0f, 0f, 0.45f * shadow);
+                    }
+
+                    pixels[y * StrapWidth + x] = color;
+                }
+            }
+            return SaveSprite(fileName, StrapWidth, StrapHeight, pixels, Vector4.zero);
+        }
+
+        // 가죽 탄띠 (바탕 띠만) : 위아래 바느질. 쉘을 쥐는 고리는 따로 그린 고리 오브젝트(CreateBeltStrap)를 위에 깐다
+        //   600 × 80 점 → 슬라이더에는 300 × 40 칸으로 깐다. 고리 가운데 = 가로 (i + 0.5) / BeltLoops
+        public static Sprite CreateAmmoBelt(string fileName)
+        {
+            const int width = 600;
+            const int height = 80;
+            Color[] pixels = new Color[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    // ① 가죽 바탕 : 얼룩 + 잔 주름
+                    float grain = Mathf.PerlinNoise(x * 0.05f + 7f, y * 0.08f + 3f) * 0.6f
+                                + Mathf.PerlinNoise(x * 0.3f + 1f, y * 0.3f + 9f) * 0.4f;
+                    Color color = Color.Lerp(Leather, LeatherLight, grain * 0.5f);
+
+                    // ② 위아래 가장자리 : 닳아서 어둡다 + 바느질 점선
+                    float edge = Mathf.Min(y, height - 1 - y);
+                    if (edge < 4f) color = Color.Lerp(LeatherDark, color, edge / 4f);
+                    bool stitchRow = Mathf.Abs(y - 9) < 1.5f || Mathf.Abs(y - (height - 10)) < 1.5f;
+                    if (stitchRow && x % 12 < 6) color = Stitch;
+
+                    pixels[y * width + x] = color;
+                }
+            }
+            return SaveSprite(fileName, width, height, pixels, Vector4.zero);
+        }
+
         // 3D 나무 막대(게시판 틀 · 뒤판)에 입히는 나뭇결. 가로로 길게 흐른다 → 막대를 길이 방향으로 눕혀서 입힌다
         //   UI 가 아니라 재질(Material)에 쓰는 그림이라 Sprite 대신 Texture2D 를 돌려준다
         public static Texture2D CreateWoodGrain(string fileName)
