@@ -49,11 +49,13 @@ namespace Game
         [SerializeField] private float drawTimeLimit = 3f;                         // 신호 후 이 시간이 지나면 안 쏜 것으로 본다
         [SerializeField] private float holsterTimeLimit = 5f;                      // 무승부 뒤 이 시간 안에 안 꽂으면 자동으로 꽂는다
         [SerializeField] private float resultDelay = 2f;                           // 승부가 나고 결과판이 뜨기까지 (쓰러지는 모습을 볼 시간)
+        [SerializeField] private float lastShotWindow = 1f;                        // 쏘기 전에 맞았을 때, 쓰러지며 마지막 한 발을 쏠 수 있는 시간 (초)
 
         // ---- 방송 ----
         public event Action<int> RoundStarted;         // 대치 시작. 라운드 번호 (1부터)
         public event Action DrawSignaled;              // 정오 신호
         public event Action<RoundResult> RoundEnded;   // 판정 끝
+        public event Action<RoundResult> MutualKilled; // 동귀어진 : 적에게 맞은 뒤 마지막 한 발이 적을 맞혔다 (RoundEnded(EnemyWin) 다음에 온다)
         public event Action<DuelResult> DuelEnded;     // 결투 끝. 점수 · 가장 빠른 반응 · 승부가 난 라운드
 
         public int CurrentRound { get; private set; }
@@ -71,6 +73,11 @@ namespace Game
         private float enemyReactionTime;    // 신호부터 적이 쏠 때까지 (초). enemyFired 일 때만 의미가 있다
         private RoundResult lastResult;     // 방금 끝난 라운드의 결과 (무승부면 다음 라운드로, 아니면 결과판으로)
         private bool isAdvanced;            // 전진 표식으로 이동했다
+
+        // 마지막 한 발 (동귀어진 기회) : 쏘기 전에 적에게 맞으면 lastShotWindow 초 동안 총을 잠그지 않는다
+        private bool isLastShotOpen;
+        private float lastShotCloseTime;    // 이 시각(Time.time)이 지나면 기회가 끝난다
+        private float resultShowTime;       // 결과판을 띄울 시각. 동귀어진이 나면 적이 쓰러지는 모습을 볼 수 있게 뒤로 민다
 
         // 결투 전체의 기록 (라운드가 바뀌어도 지우지 않는다. 다시 결투는 씬을 다시 열므로 저절로 처음 값이 된다)
         private bool hasFiredInDuel;          // 이번 결투에서 한 발이라도 쐈나
@@ -196,7 +203,15 @@ namespace Game
             }
 
             // ⑦ 결투 끝 → 쓰러지는 모습을 잠깐 보여 준 뒤 결과판
-            yield return new WaitForSeconds(resultDelay);
+            //    마지막 한 발 기회가 열려 있으면 그것도 끝날 때까지 기다린다.
+            //    동귀어진이 나면 HandleLastShot 이 resultShowTime 을 뒤로 민다 (적이 쓰러지는 모습을 볼 시간)
+            resultShowTime = Time.time + resultDelay;
+            while (Time.time < resultShowTime || isLastShotOpen)
+            {
+                if (isLastShotOpen && Time.time >= lastShotCloseTime)
+                    CloseLastShot();
+                yield return null;
+            }
 
             //    총을 홀스터에 돌려놓는다. 손이 비어야 레이로 버튼을 누르기 쉽다
             //    드로우 중에 떨어뜨린 총도 이때 돌아온다 (기획서 9장)
@@ -289,23 +304,68 @@ namespace Game
         // 플레이어가 쐈다 (CombatManager 가 알려 줌)
         private void HandlePlayerFired(ShotInfo shot)
         {
+            // 적에게 맞은 뒤 마지막 한 발
+            if (isLastShotOpen)
+            {
+                HandleLastShot(shot);
+                return;
+            }
+
             // 신호 전, 판정 후에는 총이 잠겨 있어서 여기 오지 않는다.
             // 그래도 잠금 밖에서 Fire() 를 직접 부른 총알(테스터 등)은 판정에 넣지 않는다.
             if (Phase != DuelPhase.Draw) return;
 
-            playerFired = true;
-            playerReactionTime = shot.FireTime - SignalTime;   // 반응속도 = 쏜 시각 - 신호 시각
-
-            // 결투 전체에서 가장 빠른 반응만 기억해 둔다 (첫 발이거나, 지금까지보다 빠르면 바꾼다)
-            if (hasFiredInDuel == false || playerReactionTime < fastestReactionTime)
-                fastestReactionTime = playerReactionTime;
-            hasFiredInDuel = true;
+            RecordPlayerShot(shot);
 
             CombatManager.Instance.LockPlayerGun();   // 한 발 쐈으니 다음 라운드까지 잠금
             if (shot.IsHit)
                 EndRound(RoundOutcome.PlayerWin, shot.Zone.Part);
             else if (enemyFired)
                 EndRound(RoundOutcome.Draw, HitPart.Body);   // 적은 이미 빗나갔고 나도 빗나감
+        }
+
+        // 플레이어가 쏜 기록 : 반응속도 = 쏜 시각 - 신호 시각, 결투 전체에서 가장 빠른 반응
+        private void RecordPlayerShot(ShotInfo shot)
+        {
+            playerFired = true;
+            playerReactionTime = shot.FireTime - SignalTime;
+
+            // 첫 발이거나, 지금까지보다 빠르면 바꾼다
+            if (hasFiredInDuel == false || playerReactionTime < fastestReactionTime)
+                fastestReactionTime = playerReactionTime;
+            hasFiredInDuel = true;
+        }
+
+        // 마지막 한 발 : 적에게 맞고 쓰러지며 쏜 총알. 맞히면 동귀어진 (그래도 패배, 0점)
+        private void HandleLastShot(ShotInfo shot)
+        {
+            CloseLastShot();   // 한 발뿐
+            RecordPlayerShot(shot);
+            lastResult.PlayerFired = true;
+            lastResult.PlayerReactionTime = playerReactionTime;
+
+            if (shot.IsHit == false)
+            {
+                Debug.Log("[StageManager] 마지막 한 발이 빗나감");
+                return;
+            }
+
+            lastResult.MutualKill = true;
+            lastResult.HitPart = shot.Zone.Part;
+            Debug.Log($"[StageManager] {CurrentRound}라운드 동귀어진 ({shot.Zone.Part})");
+
+            enemy.EndRound(lastResult);   // 적도 쓰러진다
+            MutualKilled?.Invoke(lastResult);
+
+            // 적이 쓰러지는 모습을 볼 수 있게 결과판을 뒤로 민다
+            resultShowTime = Mathf.Max(resultShowTime, Time.time + resultDelay);
+        }
+
+        // 마지막 한 발 기회를 닫고 총을 잠근다
+        private void CloseLastShot()
+        {
+            isLastShotOpen = false;
+            CombatManager.Instance.LockPlayerGun();
         }
 
         // 플레이어가 홀스터에서 총을 뽑았다 (CombatManager 가 알려 줌)
@@ -336,7 +396,18 @@ namespace Game
         private void EndRound(RoundOutcome outcome, HitPart hitPart)
         {
             Phase = DuelPhase.Judged;   // 이제부터 쏘거나 뽑아도 판정하지 않는다
-            CombatManager.Instance.LockPlayerGun();   // 안 쏘고 끝났어도 (적이 먼저 맞힘, 시간 초과) 잠근다
+
+            // 쏘기 전에 적에게 맞았다 → 총을 잠그지 않고 마지막 한 발 기회를 준다 (맞히면 동귀어진)
+            //   그 밖에는 (시간 초과, 반칙, 이미 쐈음) 바로 잠근다
+            if (outcome == RoundOutcome.EnemyWin && playerFired == false)
+            {
+                isLastShotOpen = true;
+                lastShotCloseTime = Time.time + lastShotWindow;
+            }
+            else
+            {
+                CombatManager.Instance.LockPlayerGun();
+            }
 
             RoundResult result = new RoundResult();
             result.Round = CurrentRound;

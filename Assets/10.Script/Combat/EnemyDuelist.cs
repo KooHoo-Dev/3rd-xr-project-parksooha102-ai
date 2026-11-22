@@ -172,7 +172,8 @@ namespace Game
             // 아직 안 쐈으면 취소 (플레이어가 먼저 맞혔거나, 시간 초과)
             StopAllCoroutines();
 
-            if (result.Outcome == RoundOutcome.PlayerWin)
+            // 내가 먼저 맞혔거나, 동귀어진 (StageManager 가 마지막 한 발이 맞으면 한 번 더 부른다)
+            if (result.EnemyDown)
             {
                 // 교안 Enemy.cs 의 SetInteger(DeadAnimation) + SetTrigger(Dead) 와 같은 모양
                 //   부위 번호를 먼저 넣고 Die 를 켜면, Any State 화살표가 그 부위의 쓰러짐을 고른다

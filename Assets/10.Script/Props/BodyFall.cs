@@ -41,17 +41,19 @@ namespace Game
         private void OnEnable()
         {
             StageManager.Instance.RoundEnded += HandleRoundEnded;
+            StageManager.Instance.MutualKilled += HandleRoundEnded;   // 동귀어진도 적이 쓰러진다 (그 순간부터 센다)
         }
 
         private void OnDisable()
         {
             StageManager.Instance.RoundEnded -= HandleRoundEnded;
+            StageManager.Instance.MutualKilled -= HandleRoundEnded;
         }
 
-        // 판정 끝 → 내가 적을 맞혔을 때만 (적이 쓰러질 때만)
+        // 판정 끝 → 내가 적을 맞혔을 때만 (적이 쓰러질 때만. 먼저 맞혔거나, 동귀어진)
         private void HandleRoundEnded(RoundResult result)
         {
-            if (result.Outcome != RoundOutcome.PlayerWin) return;
+            if (result.EnemyDown == false) return;
 
             if (HasAny(kneeClips) == false && HasAny(fallClips) == false)
             {

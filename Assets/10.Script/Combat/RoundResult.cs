@@ -15,7 +15,11 @@ namespace Game
     {
         public int Round;              // 몇 라운드였나 (1 ~ 6)
         public RoundOutcome Outcome;
-        public HitPart HitPart;        // 플레이어가 맞힌 부위. Outcome 이 PlayerWin 일 때만 의미가 있다
+        public HitPart HitPart;        // 플레이어가 맞힌 부위. Outcome 이 PlayerWin 이거나 MutualKill 일 때만 의미가 있다
+        public bool MutualKill;        // 동귀어진 : 적에게 먼저 맞았지만 마지막 한 발로 적도 맞혔다. Outcome 은 EnemyWin 그대로 (패배, 0점)
+
+        // 적이 쓰러졌나 (내가 먼저 맞혔거나, 동귀어진)
+        public bool EnemyDown => Outcome == RoundOutcome.PlayerWin || MutualKill;
         public float FoulEarly;        // 신호보다 몇 초 먼저 뽑았나. Outcome 이 Foul 일 때만 의미가 있다 (결과판 : "2.3초 먼저 뽑았다")
 
         // 반응속도 = 신호부터 쏠 때까지 걸린 시간 (초). 기획서 7장 점수 공식의 t

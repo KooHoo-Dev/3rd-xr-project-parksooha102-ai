@@ -36,17 +36,19 @@ namespace Game
         private void OnEnable()
         {
             StageManager.Instance.RoundEnded += HandleRoundEnded;
+            StageManager.Instance.MutualKilled += HandleRoundEnded;   // 동귀어진도 적이 맞았다
         }
 
         private void OnDisable()
         {
             StageManager.Instance.RoundEnded -= HandleRoundEnded;
+            StageManager.Instance.MutualKilled -= HandleRoundEnded;
         }
 
-        // 판정 끝 → 내가 적을 맞혔을 때만
+        // 판정 끝 → 내가 적을 맞혔을 때만 (먼저 맞혔거나, 동귀어진)
         private void HandleRoundEnded(RoundResult result)
         {
-            if (result.Outcome != RoundOutcome.PlayerWin) return;
+            if (result.EnemyDown == false) return;
 
             bool isHead = result.HitPart == HitPart.Head;
             AudioClip clip = PickClip(isHead && HasAny(headClips) ? headClips : bodyClips);

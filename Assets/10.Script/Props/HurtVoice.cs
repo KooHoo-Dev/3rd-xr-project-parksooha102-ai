@@ -47,11 +47,13 @@ namespace Game
         private void OnEnable()
         {
             StageManager.Instance.RoundEnded += HandleRoundEnded;
+            StageManager.Instance.MutualKilled += HandleMutualKilled;
         }
 
         private void OnDisable()
         {
             StageManager.Instance.RoundEnded -= HandleRoundEnded;
+            StageManager.Instance.MutualKilled -= HandleMutualKilled;
         }
 
         // 판정 끝 → 내가 맞은 쪽일 때만 신음
@@ -59,6 +61,19 @@ namespace Game
         {
             RoundOutcome hurtOutcome = who == Who.Player ? RoundOutcome.EnemyWin : RoundOutcome.PlayerWin;
             if (result.Outcome != hurtOutcome) return;
+
+            PlayHurt(result);
+        }
+
+        // 동귀어진 → 적만 신음 (플레이어는 판정 때 이미 신음했다)
+        private void HandleMutualKilled(RoundResult result)
+        {
+            if (who != Who.Enemy) return;
+            PlayHurt(result);
+        }
+
+        private void PlayHurt(RoundResult result)
+        {
 
             // 머리 부위는 플레이어가 적을 맞혔을 때만 의미가 있다 (RoundResult.HitPart 설명 참고)
             bool isHead = who == Who.Enemy && result.HitPart == HitPart.Head;

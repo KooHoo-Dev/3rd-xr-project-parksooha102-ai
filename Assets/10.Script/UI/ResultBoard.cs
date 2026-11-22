@@ -121,11 +121,20 @@ namespace Game
         }
 
         // 패배 : 적 몽타주에 AT LARGE(아직 잡히지 않음) 도장 + 진 라운드, 가장 빠른 반응
+        //   동귀어진 : 마지막 한 발이 적을 맞혔다 → 동귀어진 도장 + 맞힌 자리에 총알 구멍. 그래도 패배라 REWARD $ 0
         private void ShowEnemyWin(DuelResult result)
         {
             ShowOutlaw();
-            resultText.SetText("AT LARGE\n<size=42%>패배 · 현상범 도주</size>");
-            bulletHole.gameObject.SetActive(false);
+            if (result.LastRound.MutualKill)
+            {
+                resultText.SetText("동귀어진\n<size=42%>패배 · 현상범과 함께 쓰러짐</size>");
+                ShowBulletHole(result.LastRound.HitPart);
+            }
+            else
+            {
+                resultText.SetText("AT LARGE\n<size=42%>패배 · 현상범 도주</size>");
+                bulletHole.gameObject.SetActive(false);
+            }
 
             // 쓰러진 라운드 · 가장 빠른 반응을 칭호로 (한 발도 못 쐈으면 반응 칭호가 '허리춤의 장식품')
             string roundName = DuelTitles.GetName(DuelTitles.GetLoseRound(result.LastRound.Round, GetRoundCount()));
