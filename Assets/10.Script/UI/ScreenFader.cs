@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -11,10 +12,11 @@ namespace Game
     //
     //   씬에 따로 놓지 않는다. 씬이 열릴 때마다 Main Camera 에 저절로 붙는다
     //     (sceneLoaded 는 Awake 다음, Start · 첫 화면보다 먼저 온다 → 첫 프레임부터 검다)
-    //   VR 은 Screen Space - Overlay 캔버스가 안 보여서, 카메라 바로 앞에 붙는 Screen Space - Camera 캔버스로 덮는다
+    //   VR 은 Screen Space 캔버스가 양쪽 눈 시야를 다 못 덮어서, 카메라 자식으로 붙인 큰 World Space 캔버스로 덮는다
     public class ScreenFader : MonoBehaviour
     {
-        private const float FadeTime = 0.5f;   // 덮는 · 걷는 시간 (초)
+        private const float FadeTime = 0.5f;        // 덮는 · 걷는 시간 (초)
+        private const float PanelSizeRate = 12f;    // 검은 판 한 변 = 카메라와의 거리 × 이 값
 
         private static ScreenFader instance;
 
@@ -48,17 +50,25 @@ namespace Game
         {
             instance = this;
 
-            // 카메라 바로 앞(near clip 조금 뒤)에 화면을 꽉 채우는 검은 판을 만든다. 처음엔 다 덮은 상태
+            // 카메라 바로 앞(near clip 조금 뒤)에 검은 판을 띄운다. 처음엔 다 덮은 상태
+            //   Screen Space - Camera 는 VR 에서 화면 한 장 크기로 잡혀서 양쪽 눈 시야 가장자리가 비친다
+            //   → World Space 캔버스를 카메라 자식으로 붙이고, 시야보다 훨씬 크게 만든다
+            //     (거리의 PanelSizeRate 배 크기 = 어느 쪽으로든 약 80° 이상을 덮는다. 한쪽 눈 시야는 50° 남짓)
             Camera cam = GetComponent<Camera>();
+            float distance = cam.nearClipPlane + 0.01f;
 
             GameObject canvasObject = new GameObject("ScreenFader", typeof(Canvas), typeof(CanvasGroup));
             canvasObject.transform.SetParent(transform, false);
 
             Canvas canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = cam;
-            canvas.planeDistance = cam.nearClipPlane + 0.01f;
+            canvas.renderMode = RenderMode.WorldSpace;
             canvas.sortingOrder = short.MaxValue;   // 다른 UI 보다 위
+
+            RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.localPosition = new Vector3(0f, 0f, distance);
+            canvasRect.localRotation = Quaternion.identity;
+            canvasRect.localScale = Vector3.one;
+            canvasRect.sizeDelta = Vector2.one * distance * PanelSizeRate;
 
             group = canvasObject.GetComponent<CanvasGroup>();
             group.alpha = 1f;
@@ -77,6 +87,14 @@ namespace Game
             Image image = imageObject.GetComponent<Image>();
             image.color = Color.black;
             image.raycastTarget = false;
+
+            // 무엇이든 위에 그린다
+            //   ZTest Always : 판보다 가까운 물체(얼굴에 붙인 총 · 손)가 있어도 깊이 비교 없이 덮는다
+            //   renderQueue 5000 : 큐가 가장 늦다 → Overlay 큐 · 늦게 그리는 이펙트보다도 나중에 그린다
+            Material overlay = new Material(Canvas.GetDefaultCanvasMaterial());
+            overlay.SetInt("unity_GUIZTestMode", (int)CompareFunction.Always);
+            overlay.renderQueue = 5000;
+            image.material = overlay;
         }
 
         private void OnDestroy()
