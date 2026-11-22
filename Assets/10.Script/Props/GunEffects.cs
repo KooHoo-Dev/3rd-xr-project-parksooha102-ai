@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 
@@ -12,6 +13,8 @@ namespace Game
     //   총알 자국 : 총알이 지나간 길에 공기가 밀려난 자국(BulletWake 셰이더)이 남았다가 가라앉는다
     //     ① 자국의 머리가 총구 → 끝점으로 날아간다 (꼬리는 총구에 남아, 지나간 길 전체가 자국이 된다)
     //     ② 끝점에 닿으면 wakeLifetime 초 동안 서서히 옅어지다 사라진다
+    //     한 발마다 자국이 따로 생긴다 (Muzzle 의 LineRenderer 를 본떠 자식 BulletWake 를 만든다).
+    //     앞 자국이 사라지기 전에 연달아 쏴도 앞 자국은 지워지지 않고 끝까지 가라앉는다
     //
     //   오브젝트 구성 (총구 = 이 오브젝트의 위치, 파란 화살표 z = 쏘는 방향)
     //     Muzzle         ← GunEffects + AudioSource + LineRenderer (Material = BulletWake)
@@ -35,29 +38,31 @@ namespace Game
         private static int visibleWakeCount;
 
         private AudioSource audioSource;
-        private LineRenderer line;
-        private bool isWakeVisible;   // 내 자국이 지금 보이나 (visibleWakeCount 를 두 번 세거나 덜 빼지 않게)
+        private LineRenderer template;   // Muzzle 의 LineRenderer. 직접 그리지 않고, 한 발마다 쓸 자국의 "본" 으로만 쓴다
+
+        // 한 발 = 자국 하나. 앞 자국이 사라지기 전에 또 쏴도 앞 자국은 끝까지 남는다
+        //   다 쓴 자국은 버리지 않고 모아 두었다가 다음 발에 다시 쓴다 (쏠 때마다 오브젝트를 만들지 않게)
+        private readonly List<LineRenderer> idleWakes = new List<LineRenderer>();
+        private readonly List<LineRenderer> activeWakes = new List<LineRenderer>();
 
         private void Awake()
         {
             audioSource = GetComponent<AudioSource>();
-            line = GetComponent<LineRenderer>();
+            template = GetComponent<LineRenderer>();
 
             // 자국은 BulletWake 셰이더로 그려야 한다. 다른 머티리얼이면 그냥 색 줄이 그려진다
-            if (line.sharedMaterial == null || line.sharedMaterial.shader.name != WakeShaderName)
+            if (template.sharedMaterial == null || template.sharedMaterial.shader.name != WakeShaderName)
                 throw new Exception($"[GunEffects] {name} 의 LineRenderer Material 이 {WakeShaderName} 셰이더가 아닙니다. Shader 를 {WakeShaderName} 로 고른 Material 을 꽂아 주세요.");
 
-            // 자국은 월드 좌표로 그린다. 총이 손을 따라 움직여도 자국은 제자리에 남아야 해서
-            line.useWorldSpace = true;
-            line.positionCount = 2;                     // 총구 · 머리 두 점
-            line.textureMode = LineTextureMode.Tile;    // uv.x = 총구에서 몇 m 왔나 → 셰이더의 고리 간격이 거리와 상관없이 같다
-            line.enabled = false;                       // 쏘기 전에는 안 보인다
+            template.enabled = false;   // 본은 늘 꺼 둔다
         }
 
         private void OnDisable()
         {
-            // 자국이 날아가는 도중에 꺼지면(씬 다시 열기 등) 코루틴이 멈춘다 → 센 것을 여기서 빼 준다
-            HideWake();
+            // 자국이 날아가는 도중에 꺼지면(씬 다시 열기 등) 코루틴이 멈춘다 → 남은 자국을 여기서 모두 끈다
+            StopAllCoroutines();
+            for (int i = activeWakes.Count - 1; i >= 0; i--)
+                HideWake(activeWakes[i]);
         }
 
         // 한 발 쏜 모습 : 총성 + 총구 화염 + target 까지 총알 자국
@@ -70,19 +75,18 @@ namespace Game
             // ② 총구 화염 (Particle System 의 Burst 가 한 번 터진다)
             muzzleFlash.Play();
 
-            // ③ 총알 자국. 앞 자국이 아직 남아 있으면 멈추고 새로 그린다
-            StopAllCoroutines();
-            StartCoroutine(WakeRoutine(transform.position, target));
+            // ③ 총알 자국. 발마다 새 자국 → 앞 자국은 자기 시간대로 가라앉는다
+            StartCoroutine(WakeRoutine(ShowWake(), transform.position, target));
         }
 
-        private IEnumerator WakeRoutine(Vector3 from, Vector3 to)
+        private IEnumerator WakeRoutine(LineRenderer line, Vector3 from, Vector3 to)
         {
             Vector3 direction = (to - from).normalized;
             float distance = Vector3.Distance(from, to);
 
-            ShowWake();
-            SetWakeStrength(1f);
+            SetWakeStrength(line, 1f);
             line.SetPosition(0, from);
+            line.SetPosition(1, from);
 
             // ① 머리가 날아간다. 예) 10m, 120m/초 → 약 0.08초
             float traveled = 0f;
@@ -99,44 +103,82 @@ namespace Game
             while (timer < wakeLifetime)
             {
                 timer += Time.deltaTime;
-                SetWakeStrength(1f - timer / wakeLifetime);
+                SetWakeStrength(line, 1f - timer / wakeLifetime);
                 yield return null;
             }
 
-            HideWake();
+            HideWake(line);
         }
 
         // 자국 세기 (0 ~ 1). 꼭짓점 색의 알파로 셰이더에 넘긴다 (셰이더의 input.color.a)
         //   Material 의 값을 바꾸지 않는 이유 : 머티리얼 하나를 플레이어 총 · 적 총이 같이 쓰기 때문
-        private void SetWakeStrength(float strength)
+        private static void SetWakeStrength(LineRenderer line, float strength)
         {
             Color color = new Color(1f, 1f, 1f, strength);
             line.startColor = color;
             line.endColor = color;
         }
 
-        // 자국 켜기 : 첫 자국이면 카메라에 화면 복사를 켜 달라고 한다
-        private void ShowWake()
+        // 자국 하나 꺼내 켜기 : 쉬는 자국이 있으면 다시 쓰고, 없으면 새로 만든다
+        //   첫 자국이면 카메라에 화면 복사를 켜 달라고 한다
+        private LineRenderer ShowWake()
         {
-            line.enabled = true;
-            if (isWakeVisible) return;   // 이미 세어 둔 자국 (쏘자마자 또 쏜 경우)
+            LineRenderer line;
+            if (idleWakes.Count > 0)
+            {
+                line = idleWakes[idleWakes.Count - 1];
+                idleWakes.RemoveAt(idleWakes.Count - 1);
+            }
+            else
+            {
+                line = CreateWake();
+            }
 
-            isWakeVisible = true;
+            line.enabled = true;
+            activeWakes.Add(line);
+
             visibleWakeCount++;
             if (visibleWakeCount == 1)
                 SetSceneColorCopy(true);
+            return line;
         }
 
-        // 자국 끄기 : 마지막 자국이면 화면 복사를 다시 끈다
-        private void HideWake()
+        // 자국 끄기 : 쉬는 자국으로 돌려 두고, 마지막 자국이면 화면 복사를 다시 끈다
+        private void HideWake(LineRenderer line)
         {
-            line.enabled = false;
-            if (isWakeVisible == false) return;
+            if (activeWakes.Remove(line) == false) return;   // 이미 끈 자국 (두 번 빼지 않게)
 
-            isWakeVisible = false;
+            line.enabled = false;
+            idleWakes.Add(line);
+
             visibleWakeCount--;
             if (visibleWakeCount == 0)
                 SetSceneColorCopy(false);
+        }
+
+        // 새 자국 : Muzzle 의 LineRenderer(본)와 같은 모양으로 자식 오브젝트를 만든다
+        //   월드 좌표로 그려서, 총구 자식이어도 총이 움직일 때 자국은 제자리에 남는다
+        private LineRenderer CreateWake()
+        {
+            GameObject wakeObject = new GameObject("BulletWake");
+            wakeObject.transform.SetParent(transform, false);
+
+            LineRenderer line = wakeObject.AddComponent<LineRenderer>();
+            line.sharedMaterial = template.sharedMaterial;
+            line.widthMultiplier = template.widthMultiplier;
+            line.widthCurve = template.widthCurve;
+            line.alignment = template.alignment;
+            line.numCapVertices = template.numCapVertices;
+            line.numCornerVertices = template.numCornerVertices;
+            line.shadowCastingMode = template.shadowCastingMode;
+            line.receiveShadows = template.receiveShadows;
+            line.sortingLayerID = template.sortingLayerID;
+            line.sortingOrder = template.sortingOrder;
+            line.useWorldSpace = true;
+            line.positionCount = 2;                     // 총구 · 머리 두 점
+            line.textureMode = LineTextureMode.Tile;    // uv.x = 총구에서 몇 m 왔나 → 셰이더의 고리 간격이 거리와 상관없이 같다
+            line.enabled = false;
+            return line;
         }
 
         // 카메라의 화면 복사(Opaque Texture) 켜기 / 끄기
